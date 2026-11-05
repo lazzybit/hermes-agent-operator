@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	api "github.com/lazzybit/hermes-agent-operator/api/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -54,26 +53,21 @@ func TestReservedDefaultProfileRejectedBeforeResources(t *testing.T) {
 	}
 }
 
-func TestSSHCustomTerminalCommandRejectedBeforeSigning(t *testing.T) {
-	c, s, h, p := fixture(t)
+func TestSSHCustomTerminalCommandIsControllerOwned(t *testing.T) {
+	c, s, _, p := fixture(t)
 	ctx := context.Background()
-	h.Spec.SSH = &api.SSHSpec{CASecretRef: api.SSHCASecretReference{Name: "missing-ca"}}
-	if err := c.Update(ctx, h); err != nil {
-		t.Fatal(err)
-	}
 	p.Spec.Terminal.Command = []string{"/custom-daemon", "--custom"}
 	if err := c.Update(ctx, p); err != nil {
 		t.Fatal(err)
 	}
-	_, err := (&ProfileReconciler{Client: c, Scheme: s, SecretClient: c}).Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(p)})
-	if err == nil || !strings.Contains(err.Error(), "terminal.command") {
-		t.Fatalf("custom command not rejected before CA access: %v", err)
-	}
-	claims := &corev1.PersistentVolumeClaimList{}
-	if err := c.List(ctx, claims); err != nil {
+	if _, err := (&ProfileReconciler{Client: c, Scheme: s, SecretClient: c}).Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(p)}); err != nil {
 		t.Fatal(err)
 	}
-	if len(claims.Items) != 0 {
-		t.Fatal("resources created for incompatible command")
+	d := &appsv1.Deployment{}
+	if err := c.Get(ctx, client.ObjectKey{Namespace: p.Namespace, Name: "terminal-" + p.Name}, d); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(d.Spec.Template.Spec.Containers[0].Command, " ") != strings.Join(managedSSHDCommand(), " ") {
+		t.Fatal("custom command bypassed managed SSH")
 	}
 }

@@ -50,7 +50,7 @@ func (r *HermesReconciler) configurationRevision(ctx context.Context, h *api.Her
 	sources := []source{{h, h.Spec.Config, h.Spec.CredentialsSecret, false}}
 	for i := range profiles {
 		p := &profiles[i]
-		sources = append(sources, source{p, p.Spec.Config, p.Spec.CredentialsSecret, h.Spec.SSH != nil})
+		sources = append(sources, source{p, p.Spec.Config, p.Spec.CredentialsSecret, true})
 	}
 	var revisions, credentialTokens []string
 	for _, src := range sources {
@@ -85,7 +85,7 @@ func (r *HermesReconciler) configurationRevision(ctx context.Context, h *api.Her
 			return err
 		}
 		generated := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: managedConfigName(src.owner), Namespace: h.Namespace}, Data: map[string]string{"config.yaml": string(merged)}}
-		if src.owner == h && h.Spec.SSH != nil {
+		if src.owner == h {
 			generated.Data["ssh_config"] = "Include /run/hermes-ssh/*/client_config\n"
 		}
 		if err := apply(ctx, r.Client, r.Scheme, src.owner, generated); err != nil {

@@ -23,11 +23,11 @@ rules:
   - apiGroups: [""]
     resources: [services, persistentvolumeclaims, configmaps]
     verbs: [get, list, watch, create, patch, update, delete]
-  # Signing reads supplied CA and persists dynamic profile identity Secrets.
+  # Managed CA and profile identity Secrets.
   # Metadata-only namespace Secret watch; full Secret reads bypass the cache.
   - apiGroups: [""]
     resources: [secrets]
-    verbs: [get, list, watch, create, update]
+    verbs: [get, list, watch, create, patch, update]
   - apiGroups: [coordination.k8s.io]
     resources: [leases]
     verbs: [get, list, watch, create, patch, update, delete]

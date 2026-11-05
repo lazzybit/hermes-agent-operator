@@ -19,12 +19,8 @@ func (s SSHSpec) Settings() (string, time.Duration, time.Duration, error) {
 	if renew == 0 {
 		renew = 21600
 	}
-	key := s.CASecretRef.Key
-	if key == "" {
-		key = "ca_key"
-	}
-	if len(validation.IsDNS1123Subdomain(domain)) != 0 || len(validation.IsDNS1123Subdomain(s.CASecretRef.Name)) != 0 || len(validation.IsConfigMapKey(key)) != 0 || lifetime < 1200 || lifetime > 31536000 || renew < 600 || renew >= lifetime {
-		return "", 0, 0, fmt.Errorf("invalid SSH CA reference, cluster domain or certificate policy")
+	if len(validation.IsDNS1123Subdomain(domain)) != 0 || lifetime < 1200 || lifetime > 31536000 || renew < 600 || renew >= lifetime {
+		return "", 0, 0, fmt.Errorf("invalid SSH cluster domain or certificate policy")
 	}
 	return domain, time.Duration(lifetime) * time.Second, time.Duration(renew) * time.Second, nil
 }

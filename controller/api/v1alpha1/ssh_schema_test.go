@@ -19,12 +19,15 @@ func TestSSHAdmissionDefaultsAndBounds(t *testing.T) {
 	spec := crd.Spec.Versions[0].Schema.OpenAPIV3Schema.Properties["spec"]
 	for _, name := range spec.Required {
 		if name == "ssh" {
-			t.Fatal("SSH must be opt-in")
+			t.Fatal("SSH overrides must be optional")
 		}
 	}
 	ssh := spec.Properties["ssh"]
-	if ssh.Default != nil || len(ssh.Required) != 1 || ssh.Required[0] != "caSecretRef" {
-		t.Fatal("CA must be explicit")
+	if len(ssh.Required) != 0 {
+		t.Fatal("SSH overrides must not require user configuration")
+	}
+	if _, exists := ssh.Properties["caSecretRef"]; exists {
+		t.Fatal("CA selection must not be exposed")
 	}
 	for key, value := range map[string]string{"clusterDomain": "\"cluster.local\"", "lifetimeSeconds": "86400", "renewBeforeSeconds": "21600"} {
 		p := ssh.Properties[key]

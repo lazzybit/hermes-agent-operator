@@ -17,7 +17,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"slices"
 	"time"
 )
 
@@ -172,6 +171,9 @@ func (r *HermesReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 	if err = ensureClaim(ctx, r.Client, r.Scheme, h, "gateway-data", h.Spec.Storage); err != nil {
 		return
 	}
+	if err = ensureManagedCA(ctx, r.Client, r.Scheme, h); err != nil {
+		return
+	}
 	list := &api.HermesProfileList{}
 	if err = r.List(ctx, list, client.InNamespace(h.Namespace)); err != nil {
 		return
@@ -238,10 +240,6 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 	} else if !h.DeletionTimestamp.IsZero() {
 		reference.Status, reference.Reason, reference.Message = metav1.ConditionFalse, "ReferenceInvalid", "Referenced Hermes is deleting"
 	}
-	if h.Spec.SSH != nil && !slices.Equal(p.Spec.Terminal.Command, managedSSHDCommand()) {
-		err = fmt.Errorf("SSH-enabled terminal.command must be %q", managedSSHDCommand())
-		return
-	}
 	if err = rejectLegacyClaim(ctx, r.Client, p, p.Name+"-profile", p.Spec.Storage.Ephemeral); err != nil {
 		return
 	}
@@ -266,7 +264,7 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 		return
 	}
 	d, s := Terminal(p)
-	if h.Spec.SSH != nil {
+	if reference.Status == metav1.ConditionTrue {
 		var delay time.Duration
 		if delay, err = r.ensureSSH(ctx, h, p, d); err != nil {
 			return

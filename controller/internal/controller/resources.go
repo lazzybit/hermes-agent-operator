@@ -18,7 +18,7 @@ func deployment(name, ns, component, image string, command []string) *appsv1.Dep
 	one := int32(1)
 	no := false
 	ls := labels(name, component)
-	return &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns, Labels: ls}, Spec: appsv1.DeploymentSpec{Replicas: &one, Strategy: appsv1.DeploymentStrategy{Type: appsv1.RecreateDeploymentStrategyType}, Selector: &metav1.LabelSelector{MatchLabels: ls}, Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{Labels: ls}, Spec: corev1.PodSpec{AutomountServiceAccountToken: &no, SecurityContext: nonrootPod(), Containers: []corev1.Container{{Name: component, Image: image, Command: command, SecurityContext: restrictedContainer()}}}}}}
+	return &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns, Labels: ls}, Spec: appsv1.DeploymentSpec{Replicas: &one, Strategy: appsv1.DeploymentStrategy{Type: appsv1.RecreateDeploymentStrategyType}, Selector: &metav1.LabelSelector{MatchLabels: ls}, Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{Labels: ls}, Spec: corev1.PodSpec{AutomountServiceAccountToken: &no, SecurityContext: nonrootPod(), Containers: []corev1.Container{{Name: component, Image: image, Command: command, Args: []string{}, SecurityContext: restrictedContainer()}}}}}}
 }
 func mount(d *appsv1.Deployment, name, claim, path string, storage api.StorageSpec) {
 	p := &d.Spec.Template.Spec
@@ -114,11 +114,9 @@ func Gateway(h *api.Hermes, profiles []api.HermesProfile) *appsv1.Deployment {
 		initializeHome(d, h.Spec.Image, "profile-"+p.Name, "profile-config-"+p.Name, p.Spec.CredentialsSecret, p.Name)
 		init := &pod.InitContainers[len(pod.InitContainers)-1]
 		init.VolumeMounts = append(init.VolumeMounts, corev1.VolumeMount{Name: "home", MountPath: "/instance"})
-		if h.Spec.SSH != nil {
-			sshProjection(d, p.Name, false)
-		}
+		sshProjection(d, p.Name, false)
 	}
-	if h.Spec.SSH != nil {
+	{
 		mode := int32(0444)
 		pod.Volumes = append(pod.Volumes, corev1.Volume{Name: "ssh-client", VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: "gateway-config"}, DefaultMode: &mode, Items: []corev1.KeyToPath{{Key: "ssh_config", Path: "config"}}}}})
 		pod.Containers[0].VolumeMounts = append(pod.Containers[0].VolumeMounts, corev1.VolumeMount{Name: "ssh-client", MountPath: "/opt/data/.ssh", ReadOnly: true})
@@ -128,7 +126,7 @@ func Gateway(h *api.Hermes, profiles []api.HermesProfile) *appsv1.Deployment {
 
 func Terminal(p *api.HermesProfile) (*appsv1.Deployment, *corev1.Service) {
 	name := "terminal-" + p.Name
-	d := deployment(name, p.Namespace, "terminal", p.Spec.Terminal.Image, p.Spec.Terminal.Command)
+	d := deployment(name, p.Namespace, "terminal", p.Spec.Terminal.Image, managedSSHDCommand())
 	d.Spec.Template.Labels = labels(name, "terminal")
 	d.Spec.Template.Labels["hermes.nousresearch.com/instance"] = p.Spec.HermesRef
 	mount(d, "workspace", "terminal-data-"+p.Name, "/workspace", p.Spec.Terminal.Storage)

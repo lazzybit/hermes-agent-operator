@@ -34,7 +34,7 @@ func TestGatewayInitializesMountedIdentities(t *testing.T) {
 		}
 	}
 	for _, v := range pod.Volumes {
-		if v.Secret != nil && (len(v.Secret.Items) != 1 || v.Secret.Items[0].Key != ".env") {
+		if v.Secret != nil && v.Secret.SecretName == "credentials" && (len(v.Secret.Items) != 1 || v.Secret.Items[0].Key != ".env") {
 			t.Fatal("only selected credentials may be projected")
 		}
 	}

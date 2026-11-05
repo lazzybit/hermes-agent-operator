@@ -32,13 +32,13 @@ The image must provide:
 - Writable `/tmp` for the PID file and a usable mounted `/workspace`.
 - Required OpenSSH runtime directories, including `/run/sshd` where applicable.
 
-The controller sets the Pod command explicitly, overriding image ENTRYPOINT.
-When parent SSH is enabled, the CR must currently supply exactly:
+The controller always sets the SSH Pod command explicitly, overriding image ENTRYPOINT.
+Legacy `terminal.command` values are ignored.
+The CR only needs to select the image and workspace:
 
 ```yaml
 terminal:
   image: ghcr.io/lazzybit/hermes-agent-terminal:canary
-  command: [/usr/sbin/sshd, -D, -e, -f, /run/hermes-ssh/sshd_config]
   storage:
     size: 5Gi
 ```
@@ -52,7 +52,7 @@ images should use the supplied terminal command without additional CMD arguments
 
 The controller generates sshd configuration, principal authorization and gateway
 client settings. It projects distinct user and host keys/certificates from a
-retained Secret, never the CA private key. Private keys are read-only Secret
+managed Secret, never the CA private key. Private keys are read-only Secret
 projections with mode 0440 and the workload fsGroup.
 
 The daemon listens on Pod TCP 2222. The Service exposes TCP 22 targeting 2222;

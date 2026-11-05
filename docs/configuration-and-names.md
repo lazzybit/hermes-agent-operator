@@ -21,7 +21,7 @@ The gateway and native `hermes profile create` initialization use the same `Herm
 | Recommended profile credential Secret | `profile-credentials-<profile>` |
 | Profile SSH identity Secret | `profile-ssh-identity-<profile>` |
 | Profile public SSH ConfigMap | `profile-ssh-config-<profile>` |
-| Recommended external CA Secret | `ssh-ca` |
+| Automatically managed CA Secret | `gateway-ssh-ca` |
 
 Credential and CA names remain selected references. API group and Kind names, upstream Hermes commands and identity-derived user principals do not change. SSH host certificates, known_hosts and client configuration must match the new terminal Service DNS names.
 

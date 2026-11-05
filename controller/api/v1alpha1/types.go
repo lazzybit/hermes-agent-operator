@@ -28,20 +28,8 @@ type StorageSpec struct {
 	StorageClassName *string `json:"storageClassName,omitempty"`
 }
 
-// SSHCASecretReference selects an externally supplied same-namespace CA.
-type SSHCASecretReference struct {
-	// +kubebuilder:validation:MinLength=1
-	// +kubebuilder:validation:MaxLength=253
-	// +kubebuilder:validation:Pattern=`^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$`
-	Name string `json:"name"`
-	// +kubebuilder:default=ca_key
-	// +kubebuilder:validation:Pattern=`^[-._a-zA-Z0-9]+$`
-	Key string `json:"key,omitempty"`
-}
-
-// SSHSpec explicitly opts an instance into SSH identity provisioning.
+// SSHSpec contains optional connection policy overrides, not CA selection.
 type SSHSpec struct {
-	CASecretRef SSHCASecretReference `json:"caSecretRef"`
 	// +kubebuilder:default="cluster.local"
 	// +kubebuilder:validation:MaxLength=253
 	// +kubebuilder:validation:Pattern=`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$`
@@ -59,7 +47,7 @@ type SSHSpec struct {
 }
 
 type HermesSpec struct {
-	// SSH is absent by default. Provisioning does not activate a Hermes backend.
+	// SSH optionally overrides managed SSH defaults. Omission provisions an owned CA.
 	// +kubebuilder:validation:XValidation:rule="self.renewBeforeSeconds < self.lifetimeSeconds",message="renewBeforeSeconds must be less than lifetimeSeconds"
 	SSH *SSHSpec `json:"ssh,omitempty"`
 	// +kubebuilder:validation:MinLength=1
@@ -82,14 +70,12 @@ type HermesSpec struct {
 	CredentialsSecret *corev1.SecretKeySelector `json:"credentialsSecret,omitempty"`
 }
 
-// TerminalSpec describes administrator-selected executable code. When parent SSH is
-// enabled, Command must be exactly [/usr/sbin/sshd, -D, -e, -f, /run/hermes-ssh/sshd_config].
-// Cross-resource compatibility is checked at reconciliation, not CRD admission.
+// TerminalSpec selects a compatible image and workspace. SSH startup is controller-owned.
 type TerminalSpec struct {
 	// +kubebuilder:validation:MinLength=1
 	Image string `json:"image"`
-	// +kubebuilder:validation:MinItems=1
-	Command []string    `json:"command"`
+	// Deprecated: startup is managed by the controller.
+	Command []string    `json:"command,omitempty"`
 	Storage StorageSpec `json:"storage"`
 }
 

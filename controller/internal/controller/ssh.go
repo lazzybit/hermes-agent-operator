@@ -10,6 +10,8 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"time"
 )
 
@@ -18,6 +20,13 @@ func managedSSHDCommand() []string {
 }
 
 func (r *ProfileReconciler) ensureSSH(ctx context.Context, h *api.Hermes, p *api.HermesProfile, d *appsv1.Deployment) (time.Duration, error) {
+	if r.SecretClient == nil {
+		r.SecretClient = r.Client
+	}
+	if err := ensureManagedCA(ctx, r.SecretClient, r.Scheme, h); err != nil {
+		return 0, err
+	}
+	h = effectiveSSH(h)
 	domain, lifetime, renew, err := h.Spec.SSH.Settings()
 	if err != nil {
 		return 0, err
@@ -25,7 +34,7 @@ func (r *ProfileReconciler) ensureSSH(ctx context.Context, h *api.Hermes, p *api
 	if r.SecretClient == nil {
 		return 0, fmt.Errorf("SSH requires an uncached Secret client")
 	}
-	signer, err := sshidentity.NewSecretSigner(r.SecretClient, p.Namespace, sshidentity.CASecretReference{Name: h.Spec.SSH.CASecretRef.Name, Key: h.Spec.SSH.CASecretRef.Key}, sshidentity.Policy{Lifetime: lifetime, RenewBefore: renew, Backdate: time.Minute})
+	signer, err := sshidentity.NewSecretSigner(r.SecretClient, p.Namespace, sshidentity.CASecretReference{Name: "gateway-ssh-ca", Key: "ca_key"}, sshidentity.Policy{Lifetime: lifetime, RenewBefore: renew, Backdate: time.Minute})
 	if err != nil {
 		return 0, err
 	}
@@ -36,6 +45,24 @@ func (r *ProfileReconciler) ensureSSH(ctx context.Context, h *api.Hermes, p *api
 	result, err := signer.Ensure(ctx, sshidentity.Identity{Namespace: p.Namespace, Instance: p.Spec.HermesRef, Profile: p.Name, ClusterDomain: domain}, now)
 	if err != nil {
 		return 0, err
+	}
+	{
+		state := &corev1.Secret{}
+		if err := r.SecretClient.Get(ctx, result.Secret, state); err != nil {
+			return 0, err
+		}
+		if owner := metav1.GetControllerOf(state); owner != nil && owner.UID != h.UID {
+			return 0, fmt.Errorf("SSH identity belongs to another Hermes")
+		}
+		if metav1.GetControllerOf(state) == nil {
+			before := state.DeepCopy()
+			if err := controllerutil.SetControllerReference(h, state, r.Scheme, controllerutil.WithBlockOwnerDeletion(false)); err != nil {
+				return 0, err
+			}
+			if err := r.SecretClient.Patch(ctx, state, client.MergeFrom(before)); err != nil {
+				return 0, err
+			}
+		}
 	}
 	config := result.Configuration
 	cm := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: "profile-ssh-config-" + p.Name, Namespace: p.Namespace}, Data: map[string]string{

@@ -2,16 +2,11 @@ package controller
 
 import (
 	"context"
-	"crypto/ed25519"
-	"crypto/rand"
-	"encoding/pem"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
-	api "github.com/lazzybit/hermes-agent-operator/api/v1alpha1"
-	"golang.org/x/crypto/ssh"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -23,21 +18,6 @@ import (
 func TestSSHReconcileSignsReusesAndRenews(t *testing.T) {
 	c, s, h, p := fixture(t)
 	ctx := context.Background()
-	h.Spec.SSH = &api.SSHSpec{CASecretRef: api.SSHCASecretReference{Name: "ssh-ca"}}
-	if err := c.Update(ctx, h); err != nil {
-		t.Fatal(err)
-	}
-	_, key, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	block, err := ssh.MarshalPrivateKey(key, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := c.Create(ctx, &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "ssh-ca", Namespace: h.Namespace}, Data: map[string][]byte{"ca_key": pem.EncodeToMemory(block)}}); err != nil {
-		t.Fatal(err)
-	}
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	r := &ProfileReconciler{Client: c, Scheme: s, SecretClient: c, Now: func() time.Time { return now }}
 	req := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(p)}
@@ -110,58 +90,6 @@ func TestSSHReconcileSignsReusesAndRenews(t *testing.T) {
 		previous = state
 		hash = currentHash
 		terminalRV = d.ResourceVersion
-	}
-}
-
-func TestSSHMissingCAFailsClosed(t *testing.T) {
-	c, s, h, p := fixture(t)
-	ctx := context.Background()
-	h.Spec.SSH = &api.SSHSpec{CASecretRef: api.SSHCASecretReference{Name: "missing-ca"}}
-	if err := c.Update(ctx, h); err != nil {
-		t.Fatal(err)
-	}
-	r := &ProfileReconciler{Client: c, SecretClient: c, Scheme: s}
-	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(p)}); err == nil {
-		t.Fatal("missing CA accepted")
-	}
-	list := &appsv1.DeploymentList{}
-	if err := c.List(ctx, list); err != nil {
-		t.Fatal(err)
-	}
-	if len(list.Items) != 0 {
-		t.Fatal("terminal published without signing")
-	}
-	if err := c.Get(ctx, client.ObjectKeyFromObject(p), p); err != nil {
-		t.Fatal(err)
-	}
-	condition := meta.FindStatusCondition(p.Status.Conditions, "ResourcesReconciled")
-	if condition == nil || condition.Status != metav1.ConditionFalse {
-		t.Fatal("missing failure status")
-	}
-}
-
-func TestSSHDisabledCreatesNoIdentityProjections(t *testing.T) {
-	c, s, h, p := fixture(t)
-	ctx := context.Background()
-	r := &ProfileReconciler{Client: c, Scheme: s}
-	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(p)}); err != nil {
-		t.Fatal(err)
-	}
-	gateway := Gateway(h, []api.HermesProfile{*p})
-	terminal, _ := Terminal(p)
-	for _, d := range []*appsv1.Deployment{gateway, terminal} {
-		for _, v := range d.Spec.Template.Spec.Volumes {
-			if v.Projected != nil {
-				t.Fatal("SSH projection without opt-in")
-			}
-		}
-	}
-	secrets := &corev1.SecretList{}
-	if err := c.List(ctx, secrets); err != nil {
-		t.Fatal(err)
-	}
-	if len(secrets.Items) != 0 {
-		t.Fatal("SSH Secret without opt-in")
 	}
 }
 

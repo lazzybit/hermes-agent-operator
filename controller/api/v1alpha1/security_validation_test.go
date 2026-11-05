@@ -31,7 +31,7 @@ func TestSSHPropagationWindow(t *testing.T) {
 	}{
 		{1199, 600, false}, {1200, 599, false}, {1200, 600, true}, {86400, 1, false}, {1200, 1200, false}, {86400, 21600, true},
 	} {
-		spec := SSHSpec{CASecretRef: SSHCASecretReference{Name: "ca"}, LifetimeSeconds: policy.lifetime, RenewBeforeSeconds: policy.renew}
+		spec := SSHSpec{LifetimeSeconds: policy.lifetime, RenewBeforeSeconds: policy.renew}
 		_, _, _, err := spec.Settings()
 		if (err == nil) != policy.valid {
 			t.Errorf("lifetime=%d renew=%d: %v", policy.lifetime, policy.renew, err)

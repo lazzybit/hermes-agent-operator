@@ -43,7 +43,7 @@ func TestGatewayDeterministicProfileMounts(t *testing.T) {
 		t.Fatal("gateway has API token")
 	}
 	mounts := p.Containers[0].VolumeMounts
-	if len(mounts) != 6 || mounts[2].MountPath != "/run/hermes-profiles/alpha" || mounts[4].MountPath != "/run/hermes-profiles/beta" {
+	if len(mounts) != 11 || mounts[2].MountPath != "/run/hermes-profiles/alpha" || mounts[6].MountPath != "/run/hermes-profiles/beta" {
 		t.Fatalf("unexpected mounts: %#v", mounts)
 	}
 	if p.Volumes[1].ConfigMap.Name != "gateway-config" || !p.InitContainers[0].VolumeMounts[1].ReadOnly {

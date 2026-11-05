@@ -10,7 +10,7 @@ declarative profiles, persistent workspaces and managed SSH terminals.
 - **A terminal built for agent work.** The terminal image extends the official Hermes
   desktop sandbox with OpenSSH; use the supplied image or build a compatible one
   with your own tools.
-- **Managed SSH identities.** An externally supplied CA signs separate client and
+- **Managed SSH identities.** An automatically generated CA signs separate client and
   host certificates. The operator configures connections and renews certificates.
 - **Durable or disposable storage.** Retained PVCs preserve homes and workspaces;
   opt into `emptyDir` for disposable environments.
@@ -35,10 +35,10 @@ versions before installing.
    kubectl apply -k config/default
    ```
 
-3. Prepare your credential Secrets, SSH CA and resource declarations using the
+3. Prepare your credential Secrets and resource declarations using the
    [installation guide](docs/installation.md). The
    [sample](config/samples/foundation.yaml) shows a gateway and one profile;
-   it is a starting point, not a working provider or SSH configuration.
+   it is a starting point; add your provider and messaging settings.
 4. Apply your adapted declarations and inspect the resources:
 
    ```sh

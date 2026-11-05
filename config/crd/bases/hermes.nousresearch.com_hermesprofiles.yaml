@@ -239,15 +239,13 @@ spec:
                 - size
                 type: object
               terminal:
-                description: |-
-                  TerminalSpec describes administrator-selected executable code. When parent SSH is
-                  enabled, Command must be exactly [/usr/sbin/sshd, -D, -e, -f, /run/hermes-ssh/sshd_config].
-                  Cross-resource compatibility is checked at reconciliation, not CRD admission.
+                description: TerminalSpec selects a compatible image and workspace.
+                  SSH startup is controller-owned.
                 properties:
                   command:
+                    description: 'Deprecated: startup is managed by the controller.'
                     items:
                       type: string
-                    minItems: 1
                     type: array
                   image:
                     minLength: 1
@@ -270,7 +268,6 @@ spec:
                     - size
                     type: object
                 required:
-                - command
                 - image
                 - storage
                 type: object

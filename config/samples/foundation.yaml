@@ -1,6 +1,6 @@
 # Experimental resources only. Images and commands must be supplied and tested.
 # Nonsecret settings live in spec.config; supply the referenced dotenv credential Secrets.
-# See docs/installation.md to configure providers and enable managed SSH.
+# SSH CA, certificates and terminal startup are managed automatically.
 apiVersion: hermes.nousresearch.com/v1alpha1
 kind: Hermes
 metadata:
@@ -31,6 +31,5 @@ spec:
     key: .env
   terminal:
     image: ghcr.io/lazzybit/hermes-agent-terminal:canary
-    command: [/usr/sbin/sshd, -D, -e] # SSH disabled here; with parent SSH enabled use [/usr/sbin/sshd, -D, -e, -f, /run/hermes-ssh/sshd_config]
     storage:
       size: 5Gi

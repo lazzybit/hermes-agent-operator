@@ -43,39 +43,22 @@ The sample references these names; references are configurable. See
 [profile-scoped forwarding](profile-environment.md) when terminal commands need
 selected credentials.
 
-## Enable managed SSH
+## Managed SSH
 
-Supply an externally managed OpenSSH CA private key in a namespace Secret:
+No SSH setup is required. Copy `config/samples/foundation.yaml`, select tested
+images and populate the native Hermes settings in `spec.config`. The operator
+creates an Ed25519 CA Secret named `gateway-ssh-ca`, signs profile client and host
+certificates, and supplies terminal startup and connection configuration.
 
-```sh
-kubectl -n hermes-lab create secret generic ssh-ca \
-  --from-file=ca_key=/secure/path/ssh-ca
-```
+The generated CA and managed SSH identity Secrets are owned by the Hermes resource
+and garbage-collected when it is deleted. PVC retention is unchanged. Back up the
+CA if recovery is required; a missing CA with existing identities produces an error
+rather than silently changing trust. Recreating a deleted Hermes requires old SSH
+identity Secrets to have been garbage-collected before new identities are issued.
 
-The operator does not create your CA. Protect and back it up separately. Its
-controller can read namespace Secrets and must be treated as trusted.
-
-Copy `config/samples/foundation.yaml` to your own manifest. Select tested image
-pins, populate each `spec.config`, and add the following to the `Hermes` spec:
-
-```yaml
-ssh:
-  caSecretRef:
-    name: ssh-ca
-    key: ca_key
-```
-
-For its `HermesProfile`, set `terminal.command` to exactly:
-
-```yaml
-command: [/usr/sbin/sshd, -D, -e, -f, /run/hermes-ssh/sshd_config]
-```
-
-The current API still requires that command explicitly and rejects incompatible
-commands when parent SSH is enabled. The controller provides SSH configuration,
-keys and certificates. See [terminal requirements](terminal.md) for custom images.
-The unmodified sample leaves SSH provisioning disabled and does not establish an
-authenticated terminal service.
+CA selection is not exposed in the API. Optional `spec.ssh` only overrides
+cluster domain and certificate lifetime defaults; it is not an enable switch.
+See [terminal compatibility](terminal.md).
 
 ## Apply and inspect
 

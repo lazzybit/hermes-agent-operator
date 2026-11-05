@@ -89,25 +89,9 @@ spec:
                 minLength: 1
                 type: string
               ssh:
-                description: SSH is absent by default. Provisioning does not activate
-                  a Hermes backend.
+                description: SSH optionally overrides managed SSH defaults. Omission
+                  provisions an owned CA.
                 properties:
-                  caSecretRef:
-                    description: SSHCASecretReference selects an externally supplied
-                      same-namespace CA.
-                    properties:
-                      key:
-                        default: ca_key
-                        pattern: ^[-._a-zA-Z0-9]+$
-                        type: string
-                      name:
-                        maxLength: 253
-                        minLength: 1
-                        pattern: ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$
-                        type: string
-                    required:
-                    - name
-                    type: object
                   clusterDomain:
                     default: cluster.local
                     maxLength: 253
@@ -129,8 +113,6 @@ spec:
                     maximum: 31535999
                     minimum: 600
                     type: integer
-                required:
-                - caSecretRef
                 type: object
                 x-kubernetes-validations:
                 - message: renewBeforeSeconds must be less than lifetimeSeconds
