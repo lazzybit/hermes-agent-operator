@@ -8,7 +8,7 @@ import (
 )
 
 func TestSSHAdmissionDefaultsAndBounds(t *testing.T) {
-	data, err := os.ReadFile("../../config/crd/bases/hermes.nousresearch.com_hermes.yaml")
+	data, err := os.ReadFile("../../../config/crd/bases/hermes.nousresearch.com_hermes.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}

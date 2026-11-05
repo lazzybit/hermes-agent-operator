@@ -1,23 +1,26 @@
-# Experimental foundation
+# Controller behavior and lifecycle
 
-The README architecture remains the target. This document describes implemented behavior, not a production deployment guide.
+This reference describes the current controller implementation. Start with the
+[installation guide](installation.md); live application integration remains pending.
 
 ## Build and test
 
 Go 1.24 or newer is required. Dependencies are pinned in go.mod/go.sum.
 
+Run from `controller/`:
+
 ```sh
 go test ./...
 CGO_ENABLED=0 go build -trimpath -o bin/manager .
-go run sigs.k8s.io/controller-tools/cmd/controller-gen@v0.18.0 object crd paths=./api/... output:crd:artifacts:config=config/crd/bases
+go run sigs.k8s.io/controller-tools/cmd/controller-gen@v0.18.0 object crd paths=./api/... output:crd:artifacts:config=../config/crd/bases
 go run api/v1alpha1/generate-schema.go
 bin/manager --help
-CGO_ENABLED=0 go run sigs.k8s.io/kustomize/kustomize/v5@v5.6.0 build config/default
+CGO_ENABLED=0 go run sigs.k8s.io/kustomize/kustomize/v5@v5.6.0 build ../config/default
 ```
 
 The manager requires `--namespace` or `WATCH_NAMESPACE`, limits its cache to that namespace, and elects a leader using a Lease there. It will not watch the entire cluster. Kubernetes credentials are required only when actually starting the manager. The HTTP readiness probe describes manager availability, not Hermes health.
 
-`config/default` is a Kustomize installation into a dedicated `hermes-lab` namespace. Build/load your own controller image and set the manager image before installation. CRD installation requires cluster privileges; runtime RBAC uses only a Role and RoleBinding in the target namespace. The controller can get/create/update Secrets in that namespace for SSH signing; see the sensitivity and trust boundary below. It watches namespace Secret metadata only to enqueue referencing instances; selected application credential bytes are read only for change detection. RBAC list/watch cannot enforce metadata-only responses, so this remains a trusted-controller boundary. No manifests have been applied by this implementation work.
+`config/default` is a Kustomize installation into a dedicated `hermes-lab` namespace. Build/load your own controller image and set the manager image before installation. CRD installation requires cluster privileges; runtime RBAC uses only a Role and RoleBinding in the target namespace. The controller can get/create/update Secrets in that namespace for SSH signing; see the sensitivity and trust boundary below. It watches namespace Secret metadata only to enqueue referencing instances; selected application credential bytes are read only for change detection. RBAC list/watch cannot enforce metadata-only responses, so this remains a trusted-controller boundary.
 
 ## API and generated resources
 
@@ -29,7 +32,7 @@ Both resources use `hermes.nousresearch.com/v1alpha1`. Names are DNS labels limi
 
 A Hermes creates `gateway-data` and `gateway`. The gateway has one replica, Recreate updates, HERMES_HOME=/var/lib/hermes/.hermes-home, and a mount of its home claim. Referencing profiles add sorted mounts of `profile-data-<profile>` at `/run/hermes-profiles/<profile>`. Profile create/update/delete events enqueue the namespace's instances, so profile deletion removes its gateway mount. The API rejects changes to a profile reference; selecting a different parent requires recreating the profile and explicitly planning data migration. Mount changes update the Pod template.
 
-A profile creates `profile-data-<profile>`, `terminal-data-<profile>`, and `terminal-<profile>` Deployment/ClusterIP Service on TCP 22. The terminal mounts only its workspace at `/workspace`, has no gateway/profile volumes, and receives no Kubernetes API token. It has one replica and Recreate updates. No terminal image is supplied. With SSH enabled, a standalone SSH daemon configuration and command are generated. A port declaration does not establish an authenticated SSH service or enforce networking.
+A profile creates `profile-data-<profile>`, `terminal-data-<profile>`, and `terminal-<profile>` Deployment/ClusterIP Service on TCP 22. The terminal mounts only its workspace at `/workspace`, has no gateway/profile volumes, and receives no Kubernetes API token. It has one replica and Recreate updates. The project supplies a compatible image built from `terminal/Containerfile`; the CR still explicitly selects its image. With SSH enabled, a standalone SSH daemon configuration and command are generated. A port declaration does not establish an authenticated SSH service or enforce networking.
 
 Each instance and profile declares its nonsecret Hermes YAML object directly in `spec.config`.
 Optional `credentialsSecret: {name: credentials, key: .env}` selects only its dotenv
@@ -58,11 +61,12 @@ random tokens trigger restart on content changes without publishing credential
 hashes or values. Metadata-only changes do not restart gateways. Controller
 restart resets this in-memory comparison and can cause one rollout. A Pod rollout
 preserves PVC data but discards emptyDir data. No manual config-revision annotation
-or versioned configuration Secret name is required. Deprecated configSecret and
+or versioned configuration Secret name is required. Deprecated configSecret, configMap and
 helperImage fields remain optional solely for independently pinned older controllers;
 new-controller resources must migrate to spec.config and credentialsSecret.
 
-`go build .` builds only `/manager`; `Containerfile` packages it.
+From `controller/`, `go build .` builds the controller; `controller/Containerfile`
+packages `/manager`. The separate terminal build contains no Go source.
 No provider endpoints, tokens or personal configuration are embedded.
 
 Generated workloads have controller owner references. Existing unowned or differently owned workloads are rejected rather than adopted. All PVCs have **no owner reference**, a retained-for annotation, and are retained unconditionally. Existing claims with any owner reference or a deletion timestamp are rejected even when the retained identity matches. Deleting/recreating an instance or profile with the same name reuses a matching retained claim; that is intentional data recovery behavior. Remove retained PVCs manually only after an explicit data decision. There is no destructive retention-policy field.
@@ -98,7 +102,7 @@ The gateway selects only `user_key` and `user_cert`; the terminal selects only `
 65532 for terminal), beneath `/run/hermes-ssh-private/<profile>`. No key staging
 helper is used. Certificates and public files remain live directory projections;
 the fixed principal file uses its safe read-only subPath mount. See
-[packaging](packaging.md) and [profile environment](profile-environment.md).
+[terminal images](terminal.md) and [profile environment](profile-environment.md).
 
 The rootless daemon listens on TCP 2222; Service TCP 22 targets 2222 and NetworkPolicies use the Pod port 2222. Non-SSH terminal commands must also listen on 2222. Terminal images must provide `/usr/sbin/sshd`, an unlocked public-key-login-capable `agent` account with UID/GID **65532**, writable `/tmp` for the daemon PID file, and any image-specific OpenSSH runtime prerequisites. The daemon cannot switch users or elevate privileges. Enabling SSH requires `terminal.command` to be exactly `[/usr/sbin/sshd, -D, -e, -f, /run/hermes-ssh/sshd_config]`; incompatible custom commands are rejected rather than ignored. Supply a compatible rootless image; arbitrary stock root-based sshd images are not compatible. Existing root-owned 0600 runtime files on retained PVCs require an explicit administrator migration; fsGroup alone cannot repair their ownership. See the sensitivity section below for API trust boundaries.
 
@@ -118,4 +122,4 @@ The following are deliberately not exposed as speculative API settings:
 4. Use the pinned native Hermes SSH backend with standard OpenSSH certificate settings; see [packaging](packaging.md). Hermes retains its own file, sync, multiplexing and environment behavior. No controller SSH plugin or additional execution restrictions are installed.
 5. Validate the generated network policies with a real CNI, cross-profile rejection, credential forwarding/file-tool/sync-back boundaries, topology handling, status-driven workload health, and restart/update/recovery behavior in an independent lab. Recreate reduces overlapping gateway writers; it is not distributed fencing against force deletion, partitions, or manual Pod duplication.
 
-Use an independent canary instance and preserve stable/recovery resources.
+Validate upgrades in an independent test instance before changing an existing deployment.

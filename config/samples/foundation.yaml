@@ -1,5 +1,6 @@
 # Experimental resources only. Images and commands must be supplied and tested.
-# Supply externally managed configuration Secrets; these samples do not configure providers or establish SSH.
+# Nonsecret settings live in spec.config; supply the referenced dotenv credential Secrets.
+# See docs/installation.md to configure providers and enable managed SSH.
 apiVersion: hermes.nousresearch.com/v1alpha1
 kind: Hermes
 metadata:

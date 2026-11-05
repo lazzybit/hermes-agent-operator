@@ -15,7 +15,7 @@ import (
 // Validate the complete generated CRDs at the API server's creation boundary,
 // including static per-expression and whole-schema CEL cost limits.
 func TestGeneratedCRDAdmission(t *testing.T) {
-	paths, err := filepath.Glob("../../config/crd/bases/*.yaml")
+	paths, err := filepath.Glob("../../../config/crd/bases/*.yaml")
 	if err != nil || len(paths) == 0 {
 		t.Fatalf("CRD paths: %v", err)
 	}

@@ -8,7 +8,7 @@ import (
 )
 
 func TestReservedDefaultProfileAdmission(t *testing.T) {
-	data, err := os.ReadFile("../../config/crd/bases/hermes.nousresearch.com_hermesprofiles.yaml")
+	data, err := os.ReadFile("../../../config/crd/bases/hermes.nousresearch.com_hermesprofiles.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +37,7 @@ func TestSSHPropagationWindow(t *testing.T) {
 			t.Errorf("lifetime=%d renew=%d: %v", policy.lifetime, policy.renew, err)
 		}
 	}
-	data, err := os.ReadFile("../../config/crd/bases/hermes.nousresearch.com_hermes.yaml")
+	data, err := os.ReadFile("../../../config/crd/bases/hermes.nousresearch.com_hermes.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -17,6 +17,9 @@ jobs:
     env:
       CGO_ENABLED: '0'
       GOFLAGS: -trimpath
+    defaults:
+      run:
+        working-directory: controller
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -76,9 +79,11 @@ jobs:
       matrix:
         include:
           - image: hermes-agent-operator
-            file: Containerfile
+            context: controller
+            file: controller/Containerfile
           - image: hermes-agent-terminal
-            file: images/terminal/Containerfile
+            context: terminal
+            file: terminal/Containerfile
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -88,12 +93,13 @@ jobs:
           go-version: '1.24.13'
       - name: Compile SSH packaging check
         if: matrix.image == 'hermes-agent-terminal'
+        working-directory: controller
         run: CGO_ENABLED=0 go test -c -o "$RUNNER_TEMP/ssh.test" ./internal/ssh
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Build candidate once
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          context: .
+          context: ${{ matrix.context }}
           file: ${{ matrix.file }}
           platforms: linux/arm64
           load: true

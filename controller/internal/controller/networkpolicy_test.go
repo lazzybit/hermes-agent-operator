@@ -250,7 +250,7 @@ func fmtBool(v bool) string {
 }
 
 func TestNetworkPolicyNamespaceRBAC(t *testing.T) {
-	data, err := os.ReadFile("../../config/rbac/role.yaml")
+	data, err := os.ReadFile("../../../config/rbac/role.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}

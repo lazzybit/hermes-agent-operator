@@ -1,49 +1,87 @@
-# Image packaging and release
+# Development, images and release
 
-| Image | Build file | Runtime |
-| --- | --- | --- |
-| `ghcr.io/lazzybit/hermes-agent-operator` | `Containerfile` | `/manager`, UID 65532 |
-| `ghcr.io/lazzybit/hermes-agent-terminal` | `images/terminal/Containerfile` | sshd, agent UID 65532, TCP 2222 |
+## Component boundaries
 
-Gateway and initialization both use `Hermes.spec.image`, pinned in the sample to
-`nousresearch/hermes-agent:v0.22.7@sha256:e6d81ae52ebf6a43efa529701405509f20054ba818f179ddd748bed4f8af584c`.
-The official runtime owns its CLI, profile creation and installation metadata.
+- `controller/`: one Go module, entrypoint `main.go`, API types under `api/v1alpha1`,
+  reconciliation under `internal/controller`, SSH signing and tests under
+  `internal/ssh`, and its own `Containerfile`.
+- `terminal/`: an independent `Containerfile` extending the official sandbox with
+  OpenSSH and the runtime account. It has no Go module or build dependency on the
+  controller.
+- `config/`: operator CRDs, namespaced RBAC, controller Deployment, Kustomize
+  installation and examples.
 
-The terminal derives from official `nousresearch/hermes-sandbox:desktop` index
-`sha256:c7d8607d076f26a64e0bd6828f74e1764af43fe3281368188459bb693bfa7567`,
-which includes ARM64. Its thin layer adds openssh-server and the existing login and
-workspace setup. It does not rebuild the sandbox tool environment or replace sshd.
+## Build and test the controller
 
-## Checks
+Go 1.24 or newer is required. Dependencies are pinned in the controller module.
+Run from `controller/`:
 
 ```sh
 go test ./...
-HERMES_SSH_INTEGRATION=1 SSHD=/usr/sbin/sshd go test ./internal/ssh -run TestOpenSSH -v
 CGO_ENABLED=0 go build -trimpath -o bin/manager .
+bin/manager --help
 ```
 
-The real SSH check consumes configuration and certificates produced by the Go
-signer. It exercises matching logins, cross-profile principal rejection, incorrect
-host identity, expiry and SendEnv/AcceptEnv value preservation. It requires an
-unlocked local account, openssh-client and openssh-server. Source tests do not
-claim Kubernetes projection or CNI acceptance.
+Regenerate API objects and CRDs from that same directory:
 
-CI runs on native `ubuntu-24.04-arm`. Only literal `canary` and stable `vX.Y.Z`
-tags publish images. Each candidate is built once with Buildx `load: true`, then
-tested and pushed without rebuilding. The controller executes `--help`; terminal
-executes the colocated Go SSH test binary as the packaged agent user against its
-installed sshd. Test payloads are mounted read-only, not included in runtime images.
-There is no independent upstream official-image test gate or Python harness.
+```sh
+go run sigs.k8s.io/controller-tools/cmd/controller-gen@v0.18.0 object crd paths=./api/... output:crd:artifacts:config=../config/crd/bases
+go run api/v1alpha1/generate-schema.go
+```
 
-## Delivery
+Render installation manifests from the repository root:
 
-Push tested changes directly to source main. Observe the current remote annotated
-`canary` tag object and replace it with an explicit force-with-lease. Verify its
-peeled target, every tag workflow step and anonymous GHCR manifest/config revision
-for both images before selecting digests in infrastructure.
+```sh
+CGO_ENABLED=0 go run sigs.k8s.io/kustomize/kustomize/v5@v5.6.0 build config/default
+```
 
-Use a fresh private infra branch and PR for canary pins and required compatible
-schema/config updates. Merge the authorized PR and read back main. Preserve stable
-pins, encrypted credential payloads and the sole shared CRD owner. Do not add a
-migration hook. Argo automated sync follows the infra branch; a merged PR alone
-does not prove actual Pod adoption or application readiness.
+That rendering command uses Go's version-qualified tool invocation; it does not
+require a Go module at the repository root. Alternatively use `kubectl kustomize`.
+
+## Build images independently
+
+From the repository root:
+
+```sh
+docker build -f controller/Containerfile -t hermes-agent-operator:dev controller
+docker build -f terminal/Containerfile -t hermes-agent-terminal:dev terminal
+```
+
+The published names are `ghcr.io/lazzybit/hermes-agent-operator` and
+`ghcr.io/lazzybit/hermes-agent-terminal`. Gateway and home initialization use the
+same official image selected by `Hermes.spec.image`; this project does not build
+the upstream Hermes runtime. See [terminal compatibility](terminal.md).
+
+## SSH integration checks
+
+From `controller/`, with openssh-client, openssh-server and an unlocked local
+account available:
+
+```sh
+HERMES_SSH_INTEGRATION=1 SSHD=/usr/sbin/sshd go test ./internal/ssh -run TestOpenSSH -v
+```
+
+The check consumes generated configuration and certificates. It covers successful
+logins, cross-profile principal rejection, incorrect host identity, certificate
+expiry and SendEnv/AcceptEnv preservation. It does not prove Kubernetes volume
+projection, scheduling, network enforcement or upstream Hermes integration.
+
+## CI and publication
+
+`.github/workflows/ci.yml` runs on native `ubuntu-24.04-arm`, using Go 1.24.13.
+Main pushes, pull requests and manual dispatch run Go and real OpenSSH tests.
+Tag pushes also run release validation: literal `canary` and `vMAJOR.MINOR.PATCH`
+without leading zeroes are accepted. Stable image tags omit the leading `v`.
+
+The publication matrix uses separate component build contexts. Each Linux ARM64
+candidate is built once, loaded locally and tested before that same image is
+pushed. The controller candidate runs `--help`; the terminal candidate runs the
+SSH integration test binary as its packaged agent user. That test binary is built
+in the controller job context and mounted read-only, never included in the image.
+The matrix is not an atomic publication transaction: one image can publish even
+if the other fails.
+
+Before deploying a release, check both image publications and their source revision,
+select immutable digests and validate in a test namespace. CI publication and
+successful reconciliation do not establish application readiness. Infrastructure
+promotion is deployment-specific and is not automated by this repository.

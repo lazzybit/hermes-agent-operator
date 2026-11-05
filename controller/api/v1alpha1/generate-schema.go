@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	const path = "config/crd/bases/hermes.nousresearch.com_hermesprofiles.yaml"
+	const path = "../config/crd/bases/hermes.nousresearch.com_hermesprofiles.yaml"
 	data, err := os.ReadFile(path)
 	if err != nil {
 		panic(err)

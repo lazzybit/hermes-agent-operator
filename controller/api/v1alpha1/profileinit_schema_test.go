@@ -9,7 +9,7 @@ import (
 
 func TestProfileInitializationRequiredSchema(t *testing.T) {
 	for _, kind := range []string{"hermes", "hermesprofiles"} {
-		data, err := os.ReadFile("../../config/crd/bases/hermes.nousresearch.com_" + kind + ".yaml")
+		data, err := os.ReadFile("../../../config/crd/bases/hermes.nousresearch.com_" + kind + ".yaml")
 		if err != nil {
 			t.Fatal(err)
 		}
