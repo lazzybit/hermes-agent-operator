@@ -27,6 +27,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.24.13'
+          cache-dependency-path: controller/go.sum
       - name: Install SSH tools
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends openssh-client openssh-server
       - run: go mod download
@@ -91,6 +92,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.24.13'
+          cache-dependency-path: controller/go.sum
       - name: Compile SSH packaging check
         if: matrix.image == 'hermes-agent-terminal'
         working-directory: controller
