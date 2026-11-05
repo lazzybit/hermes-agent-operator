@@ -58,6 +58,27 @@ func TestConfigurationAutomaticRollouts(t *testing.T) {
 			t.Fatal(data)
 		}
 	}
+	if !strings.Contains(data, "Your terminal workspace") {
+		t.Fatal("persistent environment hint missing")
+	}
+	before := render().Spec.Template.Annotations[configRevision]
+	p.Spec.Terminal.Storage.Ephemeral = true
+	if render().Spec.Template.Annotations[configRevision] == before {
+		t.Fatal("storage policy must change rollout revision")
+	}
+	if err := c.Get(ctx, client.ObjectKey{Namespace: h.Namespace, Name: "profile-config-" + p.Name}, generated); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(generated.Data["config.yaml"], "Nothing stored") {
+		t.Fatal("ephemeral environment hint missing")
+	}
+	// Re-rendering must not append a second hint or mutate the source resource.
+	if render().Spec.Template.Annotations[configRevision] != render().Spec.Template.Annotations[configRevision] {
+		t.Fatal("unstable generated hint")
+	}
+	if strings.Contains(string(p.Spec.Config.Raw), "environment_hint") {
+		t.Fatal("source configuration mutated")
+	}
 	if strings.Contains(data, "FIXTURE_TOKEN") {
 		t.Fatal("credentials leaked into public config")
 	}

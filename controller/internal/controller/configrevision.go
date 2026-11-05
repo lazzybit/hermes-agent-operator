@@ -66,6 +66,10 @@ func (r *HermesReconciler) configurationRevision(ctx context.Context, h *api.Her
 			cfg = map[string]any{}
 		}
 		if src.ssh {
+			profile := src.owner.(*api.HermesProfile)
+			if err := addStorageEnvironmentHint(cfg, profile.Spec.Terminal.Storage.Ephemeral); err != nil {
+				return err
+			}
 			terminal, exists := cfg["terminal"].(map[string]any)
 			if !exists && cfg["terminal"] != nil {
 				return fmt.Errorf("terminal must be a mapping")

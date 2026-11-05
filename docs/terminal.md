@@ -74,3 +74,30 @@ it is not copied into the runtime image. The test covers matching authentication
 principal rejection, host identity, expiry and SSH environment transport.
 These checks do not establish live Kubernetes volume projection, CNI or Hermes
 application integration.
+
+## Automatically injected environment guidance
+
+The operator appends storage guidance to each profile's native
+`agent.environment_hint` in the generated configuration. The model sees this as
+additional runtime environment context; the operator does not replace
+`agent.system_prompt`, select a personality, or change the declared `spec.config`.
+Existing user-supplied environment hints are preserved before the generated text.
+This requires a Hermes image supporting `agent.environment_hint` (verified with
+v0.22.7). An upstream `HERMES_ENVIRONMENT_HINT` environment override takes priority
+if the deployment explicitly supplies one.
+
+The text starts with “You live in a Kubernetes pod managed by Hermes Operator.”
+For PVC-backed terminal workspaces, it explains that `/workspace` survives Pod
+replacement, other terminal paths are not guaranteed to persist, and continuing
+credentials belong outside Git under `/workspace/.credentials/` with directory
+mode 700 and file mode 600. For `terminal.storage.ephemeral: true`, it explains
+that no terminal filesystem data is guaranteed to survive Pod replacement and
+results must be delivered or exported to an explicitly configured durable location.
+Both variants prohibit exposing credential contents and request cleanup of
+unneeded plaintext copies.
+
+The selection depends only on terminal workspace storage, not gateway/profile
+home storage: these volumes can have different lifecycles. These instructions do
+not alter volume behavior or promise persistence for `emptyDir`. Storage changes
+also change generated configuration and its rollout revision. Existing sessions
+may retain cached prompt context until a fresh prompt is constructed.
