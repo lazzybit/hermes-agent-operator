@@ -7,6 +7,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	api "github.com/lazzybit/hermes-agent-operator/api/v1alpha1"
+	sshidentity "github.com/lazzybit/hermes-agent-operator/internal/ssh"
 	"golang.org/x/crypto/ssh"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -14,6 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"time"
 )
 
 // effectiveSSH supplies internal defaults without modifying the user's resource.
@@ -45,6 +47,62 @@ func ensureManagedCA(ctx context.Context, c client.Client, s *runtime.Scheme, h 
 		if !apierrors.IsNotFound(err) {
 			return err
 		}
+
+		// Upgrade the previous fixed-name CA without changing trust or exposing keys.
+		legacy := &corev1.Secret{}
+		legacyErr := c.Get(ctx, client.ObjectKey{Namespace: h.Namespace, Name: "ssh-ca"}, legacy)
+		if legacyErr == nil {
+			if !legacy.DeletionTimestamp.IsZero() {
+				return fmt.Errorf("legacy SSH CA is deleting")
+			}
+			domain, lifetime, renew, err := effectiveSSH(h).Spec.SSH.Settings()
+			if err != nil {
+				return err
+			}
+			authority, err := sshidentity.NewAuthority(legacy.Data["ca_key"], sshidentity.Policy{Lifetime: lifetime, RenewBefore: renew, Backdate: time.Minute})
+			if err != nil {
+				return fmt.Errorf("invalid legacy SSH CA")
+			}
+			profiles := &api.HermesProfileList{}
+			if err := c.List(ctx, profiles, client.InNamespace(h.Namespace)); err != nil {
+				return err
+			}
+			for _, p := range profiles.Items {
+				if p.Spec.HermesRef != h.Name {
+					continue
+				}
+				for _, name := range []string{"profile-ssh-identity-" + p.Name, p.Name + "-ssh-identity"} {
+					state := &corev1.Secret{}
+					err := c.Get(ctx, client.ObjectKey{Namespace: h.Namespace, Name: name}, state)
+					if apierrors.IsNotFound(err) {
+						continue
+					}
+					if err != nil {
+						return err
+					}
+					if owner := metav1.GetControllerOf(state); owner != nil && owner.UID != h.UID {
+						return fmt.Errorf("foreign legacy SSH identity")
+					}
+					_, _, err = authority.Ensure(sshidentity.Identity{Namespace: h.Namespace, Instance: h.Name, Profile: p.Name, ClusterDomain: domain}, &sshidentity.State{UserPrivateKey: state.Data["user_key"], HostPrivateKey: state.Data["host_key"], UserCertificate: state.Data["user_cert"], HostCertificate: state.Data["host_cert"]}, time.Now())
+					if err != nil {
+						return fmt.Errorf("legacy CA does not match existing SSH identity")
+					}
+				}
+			}
+			secret = &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: key.Name, Namespace: key.Namespace}, Type: corev1.SecretTypeOpaque, Data: map[string][]byte{"ca_key": append([]byte(nil), legacy.Data["ca_key"]...)}}
+			if err := controllerutil.SetControllerReference(h, secret, s, controllerutil.WithBlockOwnerDeletion(false)); err != nil {
+				return err
+			}
+			if err := c.Create(ctx, secret); apierrors.IsAlreadyExists(err) {
+				continue
+			} else {
+				return err
+			}
+		}
+		if !apierrors.IsNotFound(legacyErr) {
+			return legacyErr
+		}
+
 		// Do not change the trust root underneath already-issued identity state.
 		profiles := &api.HermesProfileList{}
 		if err := c.List(ctx, profiles, client.InNamespace(h.Namespace)); err != nil {

@@ -73,3 +73,36 @@ func TestManagedCARejectsForeignAndLostCA(t *testing.T) {
 		})
 	}
 }
+
+func TestLegacyCAMigrationPreservesTrust(t *testing.T) {
+	c, s, h, _ := fixture(t)
+	ctx := context.Background()
+	if err := ensureManagedCA(ctx, c, s, h); err != nil {
+		t.Fatal(err)
+	}
+	ca := &corev1.Secret{}
+	if err := c.Get(ctx, client.ObjectKey{Namespace: h.Namespace, Name: "gateway-ssh-ca"}, ca); err != nil {
+		t.Fatal(err)
+	}
+	original := string(ca.Data["ca_key"])
+	if err := c.Delete(ctx, ca); err != nil {
+		t.Fatal(err)
+	}
+	ca.Name = "ssh-ca"
+	ca.ResourceVersion = ""
+	ca.UID = ""
+	ca.OwnerReferences = nil
+	if err := c.Create(ctx, ca); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureManagedCA(ctx, c, s, h); err != nil {
+		t.Fatal(err)
+	}
+	out := &corev1.Secret{}
+	if err := c.Get(ctx, client.ObjectKey{Namespace: h.Namespace, Name: "gateway-ssh-ca"}, out); err != nil {
+		t.Fatal(err)
+	}
+	if string(out.Data["ca_key"]) != original {
+		t.Fatal("migration changed trust root")
+	}
+}
