@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"k8s.io/apimachinery/pkg/runtime"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 
@@ -47,6 +48,10 @@ func (r *HermesReconciler) configurationRevision(ctx context.Context, h *api.Her
 		credentials *corev1.SecretKeySelector
 		ssh         bool
 	}
+	// List results have no stable order; canonicalize a copy before building
+	// both configuration hashes and credential rollout tokens.
+	profiles = append([]api.HermesProfile(nil), profiles...)
+	sort.Slice(profiles, func(i, j int) bool { return profiles[i].Name < profiles[j].Name })
 	sources := []source{{h, h.Spec.Config, h.Spec.CredentialsSecret, false}}
 	for i := range profiles {
 		p := &profiles[i]
