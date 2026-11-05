@@ -1,0 +1,3 @@
+resources:
+  - bases/hermes.nousresearch.com_hermes.yaml
+  - bases/hermes.nousresearch.com_hermesprofiles.yaml

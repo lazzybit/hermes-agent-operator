@@ -1,0 +1,35 @@
+# Experimental resources only. Images and commands must be supplied and tested.
+# Supply externally managed configuration Secrets; these samples do not configure providers or establish SSH.
+apiVersion: hermes.nousresearch.com/v1alpha1
+kind: Hermes
+metadata:
+  name: demo
+  namespace: hermes-lab
+spec:
+  image: nousresearch/hermes-agent:v0.22.7@sha256:e6d81ae52ebf6a43efa529701405509f20054ba818f179ddd748bed4f8af584c
+  command: [/opt/hermes/.venv/bin/hermes, -p, default, gateway, run, --external-supervisor]
+  storage:
+    size: 1Gi
+  config: {} # nonsecret Hermes YAML; SOUL.md remains writable state
+  credentialsSecret:
+    name: gateway-credentials
+    key: .env
+---
+apiVersion: hermes.nousresearch.com/v1alpha1
+kind: HermesProfile
+metadata:
+  name: assistant
+  namespace: hermes-lab
+spec:
+  hermesRef: demo
+  storage:
+    size: 1Gi
+  config: {}
+  credentialsSecret:
+    name: profile-credentials-assistant
+    key: .env
+  terminal:
+    image: ghcr.io/lazzybit/hermes-agent-terminal:canary
+    command: [/usr/sbin/sshd, -D, -e] # SSH disabled here; with parent SSH enabled use [/usr/sbin/sshd, -D, -e, -f, /run/hermes-ssh/sshd_config]
+    storage:
+      size: 5Gi

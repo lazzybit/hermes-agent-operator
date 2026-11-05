@@ -1,0 +1,106 @@
+package controller
+
+import (
+	"context"
+	api "github.com/lazzybit/hermes-agent-operator/api/v1alpha1"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"strings"
+	"testing"
+)
+
+func TestConfigurationAutomaticRollouts(t *testing.T) {
+	c, s, h, p := fixture(t)
+	ctx := context.Background()
+	h.Spec.SSH = &api.SSHSpec{}
+	p.Spec.CredentialsSecret = &corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: "credentials"}, Key: ".env"}
+	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "credentials", Namespace: h.Namespace}, Data: map[string][]byte{".env": []byte("FIXTURE_TOKEN=one")}}
+	if err := c.Create(ctx, secret); err != nil {
+		t.Fatal(err)
+	}
+	r := &HermesReconciler{Client: c, Scheme: s}
+	render := func() *appsv1.Deployment {
+		t.Helper()
+		d := Gateway(h, []api.HermesProfile{*p})
+		if err := r.configurationRevision(ctx, h, []api.HermesProfile{*p}, d); err != nil {
+			t.Fatal(err)
+		}
+		return d
+	}
+	first := render().Spec.Template.Annotations[configRevision]
+	firstCredential := render().Spec.Template.Annotations["hermes.nousresearch.com/credentials-rollout"]
+	if render().Spec.Template.Annotations[configRevision] != first {
+		t.Fatal("idempotent reconciliation changed rollout")
+	}
+	secret.Labels = map[string]string{"irrelevant": "metadata"}
+	_ = c.Update(ctx, secret)
+	if render().Spec.Template.Annotations[configRevision] != first {
+		t.Fatal("metadata changed rollout")
+	}
+	secret.Data[".env"] = []byte("FIXTURE_TOKEN=two")
+	_ = c.Update(ctx, secret)
+	next := render().Spec.Template.Annotations["hermes.nousresearch.com/credentials-rollout"]
+	if next == "" || next == firstCredential {
+		t.Fatal("credential change must restart gateway")
+	}
+	p.Spec.Config = runtime.RawExtension{Raw: []byte(`{"terminal":{"cwd":"/custom","env_passthrough":["SERVICE_TOKEN"],"credential_files":["service.json"]},"agent":{"max_turns":17},"unknown":{"nested":[1,true,"value"]}}`)}
+	if render().Spec.Template.Annotations[configRevision] == first {
+		t.Fatal("config change must restart gateway")
+	}
+	generated := &corev1.ConfigMap{}
+	_ = c.Get(ctx, client.ObjectKey{Namespace: h.Namespace, Name: "profile-config-" + p.Name}, generated)
+	data := generated.Data["config.yaml"]
+	for _, want := range []string{"backend: ssh", "cwd: /custom", "env_passthrough:", "SERVICE_TOKEN", "credential_files:", "service.json", "max_turns: 17", "unknown:", "nested:", "ssh_host: terminal-alpha", "ssh_key: /run/hermes-ssh-private/alpha/key"} {
+		if !strings.Contains(data, want) {
+			t.Fatal(data)
+		}
+	}
+	if strings.Contains(data, "FIXTURE_TOKEN") {
+		t.Fatal("credentials leaked into public config")
+	}
+}
+
+func TestInstanceAndProfileSameNameConfigIsolation(t *testing.T) {
+	c, s, h, p := fixture(t)
+	p.Name = h.Name
+	p.ResourceVersion = ""
+	if err := c.Create(context.Background(), p); err != nil {
+		t.Fatal(err)
+	}
+	r := &HermesReconciler{Client: c, Scheme: s}
+	if err := r.configurationRevision(context.Background(), h, []api.HermesProfile{*p}, Gateway(h, []api.HermesProfile{*p})); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"gateway-config", "profile-config-" + p.Name} {
+		if err := c.Get(context.Background(), client.ObjectKey{Namespace: h.Namespace, Name: name}, &corev1.ConfigMap{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestConfigurationRevisionTargetsReferences(t *testing.T) {
+	c, s, h, p := fixture(t)
+	ctx := context.Background()
+	p.Spec.CredentialsSecret = &corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: "credentials"}, Key: ".env"}
+	_ = c.Update(ctx, p)
+	r := &HermesReconciler{Client: c, Scheme: s}
+	for _, obj := range []client.Object{&metav1.PartialObjectMetadata{ObjectMeta: metav1.ObjectMeta{Name: "credentials", Namespace: h.Namespace}}} {
+		if len(r.configSecretRequests(ctx, obj)) != 1 {
+			t.Fatal("referencing gateway not enqueued")
+		}
+	}
+	if len(r.configSecretRequests(ctx, &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: "unrelated", Namespace: h.Namespace}})) != 0 {
+		t.Fatal("unrelated config enqueued")
+	}
+	h.Spec.Config = runtime.RawExtension{Raw: []byte(`[]`)}
+	if r.configurationRevision(ctx, h, nil, Gateway(h, nil)) == nil {
+		t.Fatal("non-object config accepted")
+	}
+	h.Spec.Config = runtime.RawExtension{}
+	if err := r.configurationRevision(ctx, h, nil, Gateway(h, nil)); err != nil {
+		t.Fatal("optional config rejected", err)
+	}
+}

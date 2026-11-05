@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: hermes-agent-controller
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: hermes-agent-controller
+rules:
+  - apiGroups: [hermes.nousresearch.com]
+    resources: [hermes, hermesprofiles]
+    verbs: [get, list, watch]
+  - apiGroups: [hermes.nousresearch.com]
+    resources: [hermes/status, hermesprofiles/status]
+    verbs: [get, patch, update]
+  - apiGroups: [networking.k8s.io]
+    resources: [networkpolicies]
+    verbs: [get, list, watch, create, patch, update, delete]
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [get, list, watch, create, patch, update, delete]
+  - apiGroups: [""]
+    resources: [services, persistentvolumeclaims, configmaps]
+    verbs: [get, list, watch, create, patch, update, delete]
+  # Signing reads supplied CA and persists dynamic profile identity Secrets.
+  # Metadata-only namespace Secret watch; full Secret reads bypass the cache.
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get, list, watch, create, update]
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    verbs: [get, list, watch, create, patch, update, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: hermes-agent-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: hermes-agent-controller
+subjects:
+  - kind: ServiceAccount
+    name: hermes-agent-controller

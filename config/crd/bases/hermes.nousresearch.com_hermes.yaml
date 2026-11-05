@@ -1,0 +1,235 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.18.0
+  name: hermes.hermes.nousresearch.com
+spec:
+  group: hermes.nousresearch.com
+  names:
+    kind: Hermes
+    listKind: HermesList
+    plural: hermes
+    singular: hermes
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              command:
+                description: 'Command is explicit: no unverified Hermes image entrypoint
+                  is assumed.'
+                items:
+                  type: string
+                minItems: 1
+                type: array
+              config:
+                description: Config is the nonsecret Hermes YAML object. Unknown fields
+                  are preserved.
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+              configMap:
+                description: 'Deprecated: retained for older pinned controllers; ignored
+                  by this controller.'
+                type: string
+              configSecret:
+                description: 'Deprecated: retained for older controllers; migrate
+                  settings to ConfigMap.'
+                type: string
+              credentialsSecret:
+                description: CredentialsSecret selects the same-namespace dotenv credential
+                  file.
+                properties:
+                  key:
+                    description: The key of the secret to select from.  Must be a
+                      valid secret key.
+                    type: string
+                  name:
+                    default: ""
+                    description: |-
+                      Name of the referent.
+                      This field is effectively required, but due to backwards compatibility is
+                      allowed to be empty. Instances of this type with an empty value here are
+                      almost certainly wrong.
+                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                    type: string
+                  optional:
+                    description: Specify whether the Secret or its key must be defined
+                    type: boolean
+                required:
+                - key
+                type: object
+                x-kubernetes-map-type: atomic
+              helperImage:
+                description: 'Deprecated: retained for independently pinned older
+                  controllers; ignored here.'
+                type: string
+              image:
+                minLength: 1
+                type: string
+              ssh:
+                description: SSH is absent by default. Provisioning does not activate
+                  a Hermes backend.
+                properties:
+                  caSecretRef:
+                    description: SSHCASecretReference selects an externally supplied
+                      same-namespace CA.
+                    properties:
+                      key:
+                        default: ca_key
+                        pattern: ^[-._a-zA-Z0-9]+$
+                        type: string
+                      name:
+                        maxLength: 253
+                        minLength: 1
+                        pattern: ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$
+                        type: string
+                    required:
+                    - name
+                    type: object
+                  clusterDomain:
+                    default: cluster.local
+                    maxLength: 253
+                    pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$
+                    type: string
+                  lifetimeSeconds:
+                    default: 86400
+                    description: LifetimeSeconds allows at least twenty minutes for
+                      issuance and propagation.
+                    format: int64
+                    maximum: 31536000
+                    minimum: 1200
+                    type: integer
+                  renewBeforeSeconds:
+                    default: 21600
+                    description: RenewBeforeSeconds reserves at least ten minutes
+                      for projection and restart.
+                    format: int64
+                    maximum: 31535999
+                    minimum: 600
+                    type: integer
+                required:
+                - caSecretRef
+                type: object
+                x-kubernetes-validations:
+                - message: renewBeforeSeconds must be less than lifetimeSeconds
+                  rule: self.renewBeforeSeconds < self.lifetimeSeconds
+              storage:
+                properties:
+                  ephemeral:
+                    description: |-
+                      Ephemeral uses Pod-local emptyDir storage; no PVC is created.
+                      Data survives container restarts but is discarded when the Pod is replaced.
+                    type: boolean
+                  size:
+                    description: Size is a Kubernetes storage quantity. Existing claims
+                      are never resized or replaced.
+                    pattern: ^[1-9][0-9]*(Mi|Gi|Ti)$
+                    type: string
+                  storageClassName:
+                    type: string
+                required:
+                - size
+                type: object
+            required:
+            - command
+            - image
+            - storage
+            type: object
+          status:
+            properties:
+              conditions:
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              observedGeneration:
+                format: int64
+                type: integer
+            type: object
+        required:
+        - spec
+        type: object
+        x-kubernetes-validations:
+        - message: name must be a DNS label of at most 40 characters
+          rule: self.metadata.name.matches('^[a-z0-9]([a-z0-9-]*[a-z0-9])?$') && size(self.metadata.name)
+            <= 40
+    served: true
+    storage: true
+    subresources:
+      status: {}

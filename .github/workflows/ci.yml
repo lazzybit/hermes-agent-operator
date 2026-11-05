@@ -1,0 +1,133 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*', canary]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  go-test:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    env:
+      CGO_ENABLED: '0'
+      GOFLAGS: -trimpath
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.24.13'
+      - name: Install SSH tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends openssh-client openssh-server
+      - run: go mod download
+      - run: GOPROXY=off GOSUMDB=off go test ./...
+      - name: Exercise generated SSH configuration
+        env:
+          HERMES_SSH_INTEGRATION: '1'
+          SSHD: /usr/sbin/sshd
+        shell: bash
+        run: |
+          set -o pipefail
+          if ! TMPDIR="$RUNNER_TEMP" go test ./internal/ssh -run TestOpenSSH -v > "$RUNNER_TEMP/ssh.log" 2>&1; then
+            python3 -c 'import os; from pathlib import Path; text="\n".join(line for line in Path(os.environ["RUNNER_TEMP"], "ssh.log").read_text().splitlines() if "debug" not in line and " [preauth]" not in line)[-4000:]; print("::error title=SSH configuration::"+text.replace("%","%25").replace("\r","%0D").replace("\n","%0A"))'
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/ssh.log"
+
+  release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    needs: [go-test]
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - name: Validate release tag
+        id: version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$RELEASE_TAG" == canary ]]; then
+            echo 'tag=canary' >> "$GITHUB_OUTPUT"
+          elif [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "tag=${RELEASE_TAG#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo 'Expected canary or vMAJOR.MINOR.PATCH without leading zeroes.' >&2
+            exit 1
+          fi
+
+  publish:
+    needs: [release]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: hermes-agent-operator
+            file: Containerfile
+          - image: hermes-agent-terminal
+            file: images/terminal/Containerfile
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.24.13'
+      - name: Compile SSH packaging check
+        if: matrix.image == 'hermes-agent-terminal'
+        run: CGO_ENABLED=0 go test -c -o "$RUNNER_TEMP/ssh.test" ./internal/ssh
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build candidate once
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: ${{ matrix.file }}
+          platforms: linux/arm64
+          load: true
+          push: false
+          provenance: false
+          tags: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ needs.release.outputs.tag }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ needs.release.outputs.tag }}
+      - name: Test candidate image
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ needs.release.outputs.tag }}
+          COMPONENT: ${{ matrix.image }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$COMPONENT" in
+            hermes-agent-operator)
+              docker run --rm "$IMAGE" --help
+              ;;
+            hermes-agent-terminal)
+              docker run --rm --entrypoint /tmp/ssh.test \
+                --env HERMES_SSH_INTEGRATION=1 --env HERMES_IMAGE_TEST=1 --env SSHD=/usr/sbin/sshd --env TMPDIR=/home/agent \
+                --mount "type=bind,src=$RUNNER_TEMP/ssh.test,dst=/tmp/ssh.test,readonly" \
+                "$IMAGE" -test.run TestOpenSSH -test.v
+              ;;
+          esac
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push tested candidate
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ needs.release.outputs.tag }}
+        run: docker push "$IMAGE"

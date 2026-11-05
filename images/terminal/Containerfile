@@ -1,0 +1,16 @@
+FROM nousresearch/hermes-sandbox:desktop@sha256:c7d8607d076f26a64e0bd6828f74e1764af43fe3281368188459bb693bfa7567
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends openssh-server \
+    && rm -rf /var/lib/apt/lists/* /etc/ssh/ssh_host_* \
+    && groupadd --gid 65532 agent \
+    && useradd --uid 65532 --gid 65532 --create-home --shell /bin/bash agent \
+    && usermod --password '*' agent \
+    && mkdir -p /run/sshd /workspace /run/hermes-ssh /run/hermes-ssh-private \
+    && chmod 0755 /run/sshd \
+    && chown 65532:65532 /workspace /home/agent \
+    && chmod 1777 /tmp
+ENV HOME=/home/agent TMPDIR=/tmp
+WORKDIR /workspace
+USER 65532:65532
+EXPOSE 2222
+CMD ["/usr/sbin/sshd", "-D", "-e", "-f", "/run/hermes-ssh/sshd_config"]
