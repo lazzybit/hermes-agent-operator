@@ -104,8 +104,9 @@ Each entry requires `name`, an `https` `repository` without credentials, and a
 full 40-character commit `revision`. Tags and branches are rejected. Optional
 `path` is a subdirectory and must not contain `..`. If a fetched plugin has
 `pyproject.toml` dependencies, the init installs them into the dependency
-emptyDir with `uv` (or `pip` when `uv` is absent). It does not run
-`hermes plugins` or the catalog. Official images disable lazy installs, so
+emptyDir with the `uv` binary shipped in the Hermes image. The sealed
+runtime venv has no `pip` module, so the init does not run `python -m pip`,
+`hermes plugins`, or the catalog. Official images disable lazy installs, so
 mounting the files alone does not make those imports available. The gateway
 process sets `PYTHONPATH` to each dependency directory. A `sitecustomize.py`
 written there moves those directories behind the sealed environment on

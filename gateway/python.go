@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -234,28 +235,93 @@ func installRequirementsDefault(site string, deps []string) error {
 	if custom := os.Getenv("HERMES_PLUGIN_INSTALLER"); custom != "" {
 		return runCommand(custom, append([]string{site}, deps...))
 	}
-	python := os.Getenv("HERMES_PYTHON")
-	if python == "" {
-		python = "/opt/hermes/.venv/bin/python"
+	uv, err := findUV()
+	if err != nil {
+		return fmt.Errorf("plugin pyproject.toml requires uv from the Hermes image; the sealed venv has no pip: %w", err)
 	}
-	if uv, err := findUV(); err == nil {
-		return runCommand(uv, append([]string{"pip", "install", "--python", python, "--target", site, "--link-mode", "copy"}, deps...))
-	}
-	if _, err := exec.LookPath(python); err == nil {
-		return runCommand(python, append([]string{"-m", "pip", "install", "--disable-pip-version-check", "--target", site}, deps...))
-	}
-	return fmt.Errorf("plugin pyproject.toml requires uv or pip; neither is available")
+	return runCommand(uv, append([]string{"pip", "install", "--python", hermesPython(), "--target", site, "--link-mode", "copy"}, deps...))
 }
 
+func hermesPython() string {
+	if python := os.Getenv("HERMES_PYTHON"); python != "" {
+		return python
+	}
+	return "/opt/hermes/.venv/bin/python"
+}
+
+// findUV locates the installer shipped in the official Hermes image.
+// uv is internal PM tooling, so installed_package("uv") refuses it.
+// The sealed /opt/hermes/.venv has no pip module.
 func findUV() (string, error) {
 	if path, err := exec.LookPath("uv"); err == nil {
 		return path, nil
 	}
-	python, err := exec.LookPath("python3")
+	var tried []string
+	for _, facts := range factsCandidates() {
+		tried = append(tried, facts)
+		if path, err := uvBinaryFromFacts(facts); err == nil {
+			return path, nil
+		}
+	}
+	for _, python := range []string{"/usr/bin/python3", "/usr/local/bin/python3"} {
+		tried = append(tried, python)
+		if path, err := uvFromPython(python); err == nil {
+			return path, nil
+		}
+	}
+	return "", fmt.Errorf("uv was not on PATH or in the Hermes tool store (%s)", strings.Join(tried, ", "))
+}
+
+func factsCandidates() []string {
+	var out []string
+	if dir := os.Getenv("HERMES_RUNTIME_DIR"); dir != "" {
+		out = append(out, filepath.Join(dir, "facts.json"))
+	}
+	out = append(out, "/opt/hermes/tools/facts.json")
+	return out
+}
+
+func uvBinaryFromFacts(factsPath string) (string, error) {
+	data, err := os.ReadFile(factsPath)
 	if err != nil {
 		return "", err
 	}
-	cmd := exec.Command(python, "-c", `from pm import installed_package; print(installed_package("uv").binary)`)
+	var facts struct {
+		Packages map[string]struct {
+			Entry string `json:"entry"`
+		} `json:"packages"`
+	}
+	if err := json.Unmarshal(data, &facts); err != nil {
+		return "", err
+	}
+	entry := facts.Packages["uv"].Entry
+	if entry == "" || entry == "." || entry == ".." || strings.ContainsAny(entry, `/\`) {
+		return "", fmt.Errorf("%s has no uv entry", factsPath)
+	}
+	root := filepath.Dir(factsPath)
+	for _, rel := range []string{"uv", filepath.Join("bin", "uv")} {
+		path := filepath.Join(root, entry, rel)
+		info, err := os.Stat(path)
+		if err != nil || info.IsDir() || info.Mode()&0o111 == 0 {
+			continue
+		}
+		return path, nil
+	}
+	return "", fmt.Errorf("%s uv entry %s has no executable", factsPath, entry)
+}
+
+const uvLauncherSnippet = `from pm import uv_launcher
+path = uv_launcher("uv")
+if not path:
+    raise SystemExit("uv launcher is not installed")
+print(path)
+`
+
+func uvFromPython(python string) (string, error) {
+	if _, err := os.Stat(python); err != nil {
+		return "", err
+	}
+	cmd := exec.Command(python, "-c", uvLauncherSnippet)
 	cmd.Env = append(os.Environ(), "PYTHONPATH=/opt/hermes"+string(os.PathListSeparator)+os.Getenv("PYTHONPATH"))
 	if info, err := os.Stat("/opt/hermes"); err == nil && info.IsDir() {
 		cmd.Dir = "/opt/hermes"
@@ -265,11 +331,9 @@ func findUV() (string, error) {
 		return "", err
 	}
 	path := strings.TrimSpace(string(out))
-	if path == "" {
-		return "", fmt.Errorf("pm did not report a uv binary")
-	}
-	if _, err := os.Stat(path); err != nil {
-		return "", err
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() || info.Mode()&0o111 == 0 {
+		return "", fmt.Errorf("%s did not report an executable uv", python)
 	}
 	return path, nil
 }
