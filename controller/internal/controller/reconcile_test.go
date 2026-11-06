@@ -308,7 +308,7 @@ func TestReconcileIdempotenceAndProfileRemoval(t *testing.T) {
 	if rv != d.ResourceVersion {
 		t.Fatal("stable reconciliation wrote deployment")
 	}
-	if len(d.Spec.Template.Spec.Volumes) != 11 {
+	if len(d.Spec.Template.Spec.Volumes) != 13 {
 		t.Fatal("profile missing")
 	}
 	if err := c.Delete(ctx, p); err != nil {
@@ -318,7 +318,7 @@ func TestReconcileIdempotenceAndProfileRemoval(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = c.Get(ctx, key, d)
-	if len(d.Spec.Template.Spec.Volumes) != 5 {
+	if len(d.Spec.Template.Spec.Volumes) != 7 {
 		t.Fatal("deleted profile mount retained")
 	}
 	claims = &corev1.PersistentVolumeClaimList{}

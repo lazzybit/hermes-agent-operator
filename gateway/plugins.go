@@ -22,7 +22,7 @@ type pluginSource struct {
 // list does nothing. Fetched trees are written only under pluginsDir, which
 // the pod mounts as an emptyDir, and the home plugins entry points at that
 // directory. Plugin source is not copied onto the retained home volume.
-func applyPlugins(home, manifest, pluginsDir, depsDir string) error {
+func applyPlugins(profile, home, manifest, pluginsDir, depsDir string) error {
 	if manifest == "" {
 		return nil
 	}
@@ -36,7 +36,7 @@ func applyPlugins(home, manifest, pluginsDir, depsDir string) error {
 	if strings.TrimSpace(string(data)) == "" {
 		return nil
 	}
-	sources, err := parsePlugins(data)
+	sources, err := loadPlugins(data, profile)
 	if err != nil {
 		return err
 	}
@@ -66,6 +66,35 @@ func applyPlugins(home, manifest, pluginsDir, depsDir string) error {
 		fmt.Fprintf(os.Stderr, "plugins: prepared %s@%s\n", src.Name, src.Revision)
 	}
 	return pointPlugins(home, pluginsDir)
+}
+
+func loadPlugins(data []byte, profile string) ([]pluginSource, error) {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 {
+		return nil, nil
+	}
+	if trimmed[0] == '[' {
+		return parsePlugins(data)
+	}
+	var doc struct {
+		Profiles []struct {
+			Name    string          `json:"name"`
+			Plugins json.RawMessage `json:"plugins"`
+		} `json:"profiles"`
+	}
+	if err := json.Unmarshal(trimmed, &doc); err != nil {
+		return nil, fmt.Errorf("plugins.json: %w", err)
+	}
+	for _, item := range doc.Profiles {
+		if item.Name != profile {
+			continue
+		}
+		if len(bytes.TrimSpace(item.Plugins)) == 0 || string(bytes.TrimSpace(item.Plugins)) == "null" {
+			return nil, nil
+		}
+		return parsePlugins(item.Plugins)
+	}
+	return nil, nil
 }
 
 func parsePlugins(data []byte) ([]pluginSource, error) {

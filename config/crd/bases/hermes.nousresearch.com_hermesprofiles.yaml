@@ -221,6 +221,23 @@ spec:
                 x-kubernetes-validations:
                 - message: hermesRef is immutable
                   rule: oldSelf == self
+              messaging:
+                description: Messaging claims one MessagingChannel. Omission claims
+                  none.
+                properties:
+                  channelRef:
+                    description: ChannelRef names one MessagingChannel. Omission claims
+                      any Available channel of this platform.
+                    maxLength: 40
+                    pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
+                    type: string
+                  platform:
+                    enum:
+                    - telegram
+                    type: string
+                required:
+                - platform
+                type: object
               plugins:
                 description: |-
                   Plugins is an optional plugins.json document. Omission or an empty list

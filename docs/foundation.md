@@ -27,7 +27,8 @@ The manager requires `--namespace` or `WATCH_NAMESPACE`, limits its cache to tha
 Both resources use `hermes.nousresearch.com/v1alpha1`. Names are DNS labels limited to 40 characters to leave room for generated suffixes. See `config/samples/foundation.yaml` for neutral, non-operational examples; replace image references with tested images. Gateway commands are explicit. Terminal startup is controller-owned; legacy terminal.command is optional and ignored.
 
 - `Hermes.spec`: `image`, `command`, `storage`, optional `config`, `credentialsSecret`, and `plugins`, optional `ssh` (advanced overrides; managed SSH is always active).
-- `HermesProfile.spec`: immutable same-namespace `hermesRef` (enforced by CRD transition validation), `storage`, `terminal.image`, `terminal.storage`, optional `config`, `credentialsSecret`, and `plugins`.
+- `HermesProfile.spec`: immutable same-namespace `hermesRef` (enforced by CRD transition validation), `storage`, `terminal.image`, `terminal.storage`, optional `config`, `credentialsSecret`, `plugins`, and `messaging`.
+- `MessagingChannel.spec`: immutable `platform` and, for `telegram`, `telegram.id` (bot username without `@`), `telegram.name` (display name), and `telegram.tokenSecretRef`. Status is `Available` or `Bound` with `claimRef`.
 - Each storage spec requires `size` (positive integer Mi/Gi/Ti), with optional `storageClassName`. `ephemeral: true` instead uses a Pod-local `emptyDir` and skips PVC creation; `size` remains required for API compatibility but is ignored in ephemeral mode, as is `storageClassName`. Set it independently for the instance home, profile home and terminal workspace. Data survives container restarts and is discarded on Pod replacement. Home init creates a private UID-owned child directory, mounted at the normal home path. Omitting `ephemeral` preserves retained storage. Switching modes never deletes existing claims; old retained data requires an explicit operator cleanup. Existing claims are not resized, replaced or deleted. Changes requiring migration produce a reconciliation error. An omitted class allows cluster defaulting. Each claim records the original request in `hermes.nousresearch.com/requested-storage-class`; `<omitted>` distinguishes omission from an explicit class, including an explicit empty string. Changing or removing an explicit class requires manual migration. Claims without this annotation require an operator to verify and record their original request before reuse; the controller cannot infer it from a defaulted claim.
 
 A Hermes creates `gateway-data` and `gateway`. The gateway has one replica, Recreate updates, HERMES_HOME=/var/lib/hermes/.hermes-home, and a mount of its home claim. Referencing profiles add sorted mounts of `profile-data-<profile>` at `/run/hermes-profiles/<profile>`. Profile create/update/delete events enqueue the namespace's instances, so profile deletion removes its gateway mount. The API rejects changes to a profile reference; selecting a different parent requires recreating the profile and explicitly planning data migration. Mount changes update the Pod template.
@@ -61,8 +62,9 @@ capabilities, RuntimeDefault seccomp and `allowPrivilegeEscalation: false`.
 Existing root-owned hostPath data still requires compatible ownership; fsGroup
 alone cannot transfer ownership of old runtime files.
 
-Optional `spec.plugins` projects `plugins.json` for that home. A missing file
-or `[]` does nothing. Otherwise the init fetches each `repository` at the full
+Optional `spec.plugins` is projected with every other home in
+`/run/resources/plugins.json`. A missing entry or empty list does nothing.
+Otherwise the init fetches each `repository` at the full
 40-character commit `revision` into an emptyDir at `/run/hermes-plugins/<profile>`
 (`default` for the instance home) and points `$HERMES_HOME/plugins` at it.
 `path` selects a subdirectory and cannot contain `..`. Fetched source is not
@@ -77,6 +79,17 @@ run the Hermes catalog or `hermes plugins install`.
 `memory.provider` stays in profile `spec.config`. The plugins document checksum
 rolls the gateway the same way configuration checksums do. Plugin fetch uses
 the gateway's existing public TCP 443 egress.
+
+`spec.messaging` claims one `MessagingChannel` in the same namespace. A profile
+holds at most one channel and a channel is bound to at most one profile.
+`status.phase` is `Available` or `Bound`; `status.claimRef` names the profile.
+Removing messaging or deleting the profile returns the channel to `Available`.
+For `platform: telegram`, `spec.telegram.id` is the bot username without `@`
+and `spec.telegram.name` is the display name. The init calls the Bot HTTP API
+`setMyName` until that display name matches. It does not change the @username
+and it does not use MTProto. The token remains in `tokenSecretRef` and is
+mounted for the init; it is not copied into the CR, the resources document, or
+the user's `credentialsSecret`. Profiles without `spec.messaging` are unchanged.
 
 Stable ConfigMap/Secret names support automatic rollouts. Referenced input watches
 enqueue only consuming instances. Deterministic public configuration checksums

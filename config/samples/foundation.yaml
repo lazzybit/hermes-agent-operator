@@ -32,7 +32,27 @@ spec:
   credentialsSecret:
     name: profile-credentials-assistant
     key: .env
+  # Optional. Omit messaging to keep using credentialsSecret only.
+  # messaging:
+  #   platform: telegram
+  #   channelRef: telegram-1
   terminal:
     image: ghcr.io/lazzybit/hermes-agent-terminal:canary
     storage:
       size: 5Gi
+---
+# The token lives only in the referenced Secret. id is the @username without @.
+# name is the display name the gateway init reconciles with setMyName.
+apiVersion: hermes.nousresearch.com/v1alpha1
+kind: MessagingChannel
+metadata:
+  name: telegram-1
+  namespace: hermes-lab
+spec:
+  platform: telegram
+  telegram:
+    id: aaa_bot
+    name: Example Bot
+    tokenSecretRef:
+      name: messaging-channel-telegram-1
+      key: token

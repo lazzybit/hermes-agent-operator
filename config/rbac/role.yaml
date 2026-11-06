@@ -9,10 +9,10 @@ metadata:
   name: hermes-agent-controller
 rules:
   - apiGroups: [hermes.nousresearch.com]
-    resources: [hermes, hermesprofiles]
+    resources: [hermes, hermesprofiles, messagingchannels]
     verbs: [get, list, watch]
   - apiGroups: [hermes.nousresearch.com]
-    resources: [hermes/status, hermesprofiles/status]
+    resources: [hermes/status, hermesprofiles/status, messagingchannels/status]
     verbs: [get, patch, update]
   - apiGroups: [networking.k8s.io]
     resources: [networkpolicies]

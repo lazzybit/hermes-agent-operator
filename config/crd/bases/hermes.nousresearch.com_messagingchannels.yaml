@@ -1,0 +1,146 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.18.0
+  name: messagingchannels.hermes.nousresearch.com
+spec:
+  group: hermes.nousresearch.com
+  names:
+    kind: MessagingChannel
+    listKind: MessagingChannelList
+    plural: messagingchannels
+    singular: messagingchannel
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              MessagingChannelSpec is one platform. platform telegram requires spec.telegram
+              and forbids any other platform block.
+            properties:
+              platform:
+                description: Platform is immutable.
+                enum:
+                - telegram
+                type: string
+                x-kubernetes-validations:
+                - message: platform is immutable
+                  rule: self == oldSelf
+              telegram:
+                description: |-
+                  TelegramChannelSpec is the telegram platform block. id is the bot @username
+                  without @. name is the display name reconciled with setMyName.
+                properties:
+                  id:
+                    description: |-
+                      ID is the Telegram bot username without a leading @. Example: aaa_bot for @aaa_bot.
+                      It is not the numeric bot user id.
+                    maxLength: 32
+                    minLength: 5
+                    pattern: ^[A-Za-z][A-Za-z0-9_]{4,31}$
+                    type: string
+                  name:
+                    description: Name is the display name shown in Telegram. The gateway
+                      init reconciles it with setMyName.
+                    maxLength: 64
+                    minLength: 1
+                    type: string
+                  tokenSecretRef:
+                    description: TokenSecretRef selects the bot token. The token is
+                      never stored on this object.
+                    properties:
+                      key:
+                        description: The key of the secret to select from.  Must be
+                          a valid secret key.
+                        type: string
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                      optional:
+                        description: Specify whether the Secret or its key must be
+                          defined
+                        type: boolean
+                    required:
+                    - key
+                    type: object
+                    x-kubernetes-map-type: atomic
+                required:
+                - id
+                - name
+                - tokenSecretRef
+                type: object
+            required:
+            - platform
+            type: object
+            x-kubernetes-validations:
+            - message: platform telegram requires spec.telegram
+              rule: self.platform == 'telegram' && has(self.telegram)
+            - message: spec.telegram is only valid for platform telegram
+              rule: '!has(self.telegram) || self.platform == ''telegram'''
+          status:
+            description: MessagingChannelStatus is Available until a profile claims
+              the channel.
+            properties:
+              claimRef:
+                description: MessagingClaimRef identifies the single profile bound
+                  to a channel.
+                properties:
+                  kind:
+                    type: string
+                  name:
+                    type: string
+                  uid:
+                    description: |-
+                      UID is a type that holds unique ID values, including UUIDs.  Because we
+                      don't ONLY use UUIDs, this is an alias to string.  Being a type captures
+                      intent and helps make sure that UIDs and names do not get conflated.
+                    type: string
+                required:
+                - kind
+                - name
+                type: object
+              phase:
+                enum:
+                - Available
+                - Bound
+                type: string
+            type: object
+        required:
+        - spec
+        type: object
+        x-kubernetes-validations:
+        - message: name must be a DNS label of at most 40 characters
+          rule: self.metadata.name.matches('^[a-z0-9]([a-z0-9-]*[a-z0-9])?$') && size(self.metadata.name)
+            <= 40
+    served: true
+    storage: true
+    subresources:
+      status: {}

@@ -8,11 +8,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 var GroupVersion = schema.GroupVersion{Group: "hermes.nousresearch.com", Version: "v1alpha1"}
 var SchemeBuilder = runtime.NewSchemeBuilder(func(s *runtime.Scheme) error {
-	s.AddKnownTypes(GroupVersion, &Hermes{}, &HermesList{}, &HermesProfile{}, &HermesProfileList{})
+	s.AddKnownTypes(GroupVersion, &Hermes{}, &HermesList{}, &HermesProfile{}, &HermesProfileList{}, &MessagingChannel{}, &MessagingChannelList{})
 	metav1.AddToGroupVersion(s, GroupVersion)
 	return nil
 })
@@ -145,6 +146,61 @@ type HermesProfileSpec struct {
 	// +listType=map
 	// +listMapKey=name
 	Plugins []PluginSource `json:"plugins,omitempty"`
+	// Messaging claims one MessagingChannel. Omission claims none.
+	Messaging *ProfileMessagingSpec `json:"messaging,omitempty"`
+}
+
+// ProfileMessagingSpec claims one channel. platform is the sum-type discriminant.
+type ProfileMessagingSpec struct {
+	// +kubebuilder:validation:Enum=telegram
+	Platform string `json:"platform"`
+	// ChannelRef names one MessagingChannel. Omission claims any Available channel of this platform.
+	// +kubebuilder:validation:MaxLength=40
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`
+	ChannelRef string `json:"channelRef,omitempty"`
+}
+
+// TelegramChannelSpec is the telegram platform block. id is the bot @username
+// without @. name is the display name reconciled with setMyName.
+type TelegramChannelSpec struct {
+	// ID is the Telegram bot username without a leading @. Example: aaa_bot for @aaa_bot.
+	// It is not the numeric bot user id.
+	// +kubebuilder:validation:MinLength=5
+	// +kubebuilder:validation:MaxLength=32
+	// +kubebuilder:validation:Pattern=`^[A-Za-z][A-Za-z0-9_]{4,31}$`
+	ID string `json:"id"`
+	// Name is the display name shown in Telegram. The gateway init reconciles it with setMyName.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=64
+	Name string `json:"name"`
+	// TokenSecretRef selects the bot token. The token is never stored on this object.
+	TokenSecretRef corev1.SecretKeySelector `json:"tokenSecretRef"`
+}
+
+// MessagingChannelSpec is one platform. platform telegram requires spec.telegram
+// and forbids any other platform block.
+// +kubebuilder:validation:XValidation:rule="self.platform == 'telegram' && has(self.telegram)",message="platform telegram requires spec.telegram"
+// +kubebuilder:validation:XValidation:rule="!has(self.telegram) || self.platform == 'telegram'",message="spec.telegram is only valid for platform telegram"
+type MessagingChannelSpec struct {
+	// Platform is immutable.
+	// +kubebuilder:validation:Enum=telegram
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="platform is immutable"
+	Platform string               `json:"platform"`
+	Telegram *TelegramChannelSpec `json:"telegram,omitempty"`
+}
+
+// MessagingClaimRef identifies the single profile bound to a channel.
+type MessagingClaimRef struct {
+	Kind string    `json:"kind"`
+	Name string    `json:"name"`
+	UID  types.UID `json:"uid,omitempty"`
+}
+
+// MessagingChannelStatus is Available until a profile claims the channel.
+type MessagingChannelStatus struct {
+	// +kubebuilder:validation:Enum=Available;Bound
+	Phase    string             `json:"phase,omitempty"`
+	ClaimRef *MessagingClaimRef `json:"claimRef,omitempty"`
 }
 
 type ResourceStatus struct {
@@ -187,4 +243,27 @@ type HermesProfileList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []HermesProfile `json:"items"`
+}
+
+const (
+	MessagingAvailable = "Available"
+	MessagingBound     = "Bound"
+)
+
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:scope=Namespaced
+// +kubebuilder:validation:XValidation:rule="self.metadata.name.matches('^[a-z0-9]([a-z0-9-]*[a-z0-9])?$') && size(self.metadata.name) <= 40",message="name must be a DNS label of at most 40 characters"
+type MessagingChannel struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	Spec              MessagingChannelSpec   `json:"spec"`
+	Status            MessagingChannelStatus `json:"status,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+type MessagingChannelList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []MessagingChannel `json:"items"`
 }

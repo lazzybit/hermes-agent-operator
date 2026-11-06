@@ -126,10 +126,6 @@ func (r *HermesReconciler) configurationRevision(ctx context.Context, h *api.Her
 		if err != nil {
 			return fmt.Errorf("%s spec.plugins: %w", src.owner.GetName(), err)
 		}
-		if len(plugins) > 0 {
-			// The document only. Fetched plugin bytes stay out of this ConfigMap.
-			generated.Data["plugins.json"] = string(plugins)
-		}
 		if err := apply(ctx, r.Client, r.Scheme, src.owner, generated); err != nil {
 			return err
 		}
@@ -161,8 +157,8 @@ func (r *HermesReconciler) configurationRevision(ctx context.Context, h *api.Her
 
 // Enqueue only instances whose declarative input references the changed object.
 func (r *HermesReconciler) configSecretRequests(ctx context.Context, obj client.Object) []reconcile.Request {
-	instances, profiles := &api.HermesList{}, &api.HermesProfileList{}
-	if r.List(ctx, instances, client.InNamespace(obj.GetNamespace())) != nil || r.List(ctx, profiles, client.InNamespace(obj.GetNamespace())) != nil {
+	instances, profiles, channels := &api.HermesList{}, &api.HermesProfileList{}, &api.MessagingChannelList{}
+	if r.List(ctx, instances, client.InNamespace(obj.GetNamespace())) != nil || r.List(ctx, profiles, client.InNamespace(obj.GetNamespace())) != nil || r.List(ctx, channels, client.InNamespace(obj.GetNamespace())) != nil {
 		return nil
 	}
 	matches := func(credentials *corev1.SecretKeySelector) bool {
@@ -172,6 +168,13 @@ func (r *HermesReconciler) configSecretRequests(ctx context.Context, obj client.
 	for _, p := range profiles.Items {
 		if matches(p.Spec.CredentialsSecret) {
 			refs[p.Spec.HermesRef] = true
+		}
+	}
+	for _, channel := range channels.Items {
+		if channel.Spec.Telegram != nil && matches(&channel.Spec.Telegram.TokenSecretRef) {
+			for _, h := range instances.Items {
+				refs[h.Name] = true
+			}
 		}
 	}
 	var out []reconcile.Request

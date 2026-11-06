@@ -89,12 +89,22 @@ func TestConfigurationAutomaticRollouts(t *testing.T) {
 	if withPlugins.Spec.Template.Annotations[configRevision] == beforePlugins {
 		t.Fatal("plugins.json must roll the gateway")
 	}
+	if err := projectGatewayResources(ctx, r, h, []api.HermesProfile{*p}, nil, withPlugins); err != nil {
+		t.Fatal(err)
+	}
+	resources := &corev1.ConfigMap{}
+	if err := c.Get(ctx, client.ObjectKey{Namespace: h.Namespace, Name: "gateway-resources"}, resources); err != nil {
+		t.Fatal(err)
+	}
+	document := resources.Data["plugins.json"]
+	if !strings.Contains(document, sha) || strings.Contains(document, "plugin.py") || strings.Contains(resources.Data["messaging-channel.json"], "TELEGRAM_BOT_TOKEN") {
+		t.Fatal("plugins.json must be the declaration, not fetched plugin bytes or a token")
+	}
 	if err := c.Get(ctx, client.ObjectKey{Namespace: h.Namespace, Name: "profile-config-" + p.Name}, generated); err != nil {
 		t.Fatal(err)
 	}
-	document := generated.Data["plugins.json"]
-	if !strings.Contains(document, sha) || strings.Contains(document, "plugin.py") {
-		t.Fatal("plugins.json must be the declaration, not fetched plugin bytes")
+	if _, ok := generated.Data["plugins.json"]; ok {
+		t.Fatal("plugins.json must be projected at /run/resources, not the profile config")
 	}
 	if render().Spec.Template.Annotations[configRevision] != withPlugins.Spec.Template.Annotations[configRevision] {
 		t.Fatal("unchanged plugins.json changed rollout")

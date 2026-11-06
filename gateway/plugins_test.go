@@ -53,14 +53,14 @@ func TestApplyPluginsMissingOrEmptyIsNoop(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(home, "plugins", "local.txt"), []byte("keep"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := applyPlugins(home, filepath.Join(t.TempDir(), "missing.json"), t.TempDir(), t.TempDir()); err != nil {
+	if err := applyPlugins("", home, filepath.Join(t.TempDir(), "missing.json"), t.TempDir(), t.TempDir()); err != nil {
 		t.Fatal(err)
 	}
 	manifest := filepath.Join(t.TempDir(), "plugins.json")
 	if err := os.WriteFile(manifest, []byte("[]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := applyPlugins(home, manifest, t.TempDir(), t.TempDir()); err != nil {
+	if err := applyPlugins("", home, manifest, t.TempDir(), t.TempDir()); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(filepath.Join(home, "plugins", "local.txt"))
@@ -96,7 +96,7 @@ func TestApplyPluginsProjectsTreeAndDependencies(t *testing.T) {
 	if err := os.WriteFile(manifest, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := applyPlugins(home, manifest, pluginsDir, depsDir); err != nil {
+	if err := applyPlugins("", home, manifest, pluginsDir, depsDir); err != nil {
 		t.Fatal(err)
 	}
 	if len(fetched) != 1 || !strings.Contains(fetched[0], sha) || !strings.Contains(fetched[0], "hindsight-integrations/hermes") {
@@ -139,7 +139,7 @@ func TestApplyPluginsRefusesNonEmptyDirectory(t *testing.T) {
 	if err := os.WriteFile(manifest, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := applyPlugins(home, manifest, pluginsDir, t.TempDir()); err == nil {
+	if err := applyPlugins("", home, manifest, pluginsDir, t.TempDir()); err == nil {
 		t.Fatal("non-empty plugins directory was replaced")
 	}
 	data, err := os.ReadFile(filepath.Join(home, "plugins", "mine.py"))
@@ -168,7 +168,7 @@ func TestApplyPluginsReplacesEmptyDirectory(t *testing.T) {
 	if err := os.WriteFile(manifest, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := applyPlugins(home, manifest, pluginsDir, t.TempDir()); err != nil {
+	if err := applyPlugins("", home, manifest, pluginsDir, t.TempDir()); err != nil {
 		t.Fatal(err)
 	}
 	if target, err := os.Readlink(filepath.Join(home, "plugins")); err != nil || target != pluginsDir {

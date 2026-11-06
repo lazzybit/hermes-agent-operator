@@ -22,9 +22,11 @@ Flags:
   --profile       profile name; empty for the instance home
   --config        directory containing config.yaml and optional plugins.json
   --credentials   dotenv file linked as $HERMES_HOME/.env; empty skips it
-  --plugins       plugins.json path; a missing file or [] installs nothing
+  --plugins       plugins.json path; a missing file, [], or no entry for this profile installs nothing
   --plugins-dir   emptyDir that receives fetched plugin trees
   --plugin-deps   emptyDir that receives Python dependencies from pyproject.toml
+  --messaging     messaging-channel.json path; a missing file or no entry for this profile installs nothing
+  --generated     directory for generated profile material, usually /run/generated
 `
 
 func main() {
@@ -40,6 +42,8 @@ func run(args []string, stderr io.Writer) int {
 	plugins := fs.String("plugins", "", "optional plugins.json file")
 	pluginsDir := fs.String("plugins-dir", "", "emptyDir directory for fetched plugin trees")
 	depsDir := fs.String("plugin-deps", "", "emptyDir directory for plugin Python dependencies")
+	messaging := fs.String("messaging", "", "optional messaging-channel.json file")
+	generated := fs.String("generated", "/run/generated", "directory for generated profile material")
 	fs.Usage = func() { fmt.Fprint(stderr, usageText) }
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
@@ -58,6 +62,8 @@ func run(args []string, stderr io.Writer) int {
 		plugins:     *plugins,
 		pluginsDir:  *pluginsDir,
 		depsDir:     *depsDir,
+		messaging:   *messaging,
+		generated:   *generated,
 	}); err != nil {
 		fmt.Fprintf(stderr, "hermes-gateway-init: %v\n", err)
 		return 1
@@ -72,6 +78,8 @@ type options struct {
 	plugins     string
 	pluginsDir  string
 	depsDir     string
+	messaging   string
+	generated   string
 }
 
 func initialize(opt options) error {
@@ -79,7 +87,10 @@ func initialize(opt options) error {
 	if err != nil {
 		return err
 	}
-	if err := applyPlugins(home, opt.plugins, opt.pluginsDir, opt.depsDir); err != nil {
+	if err := applyMessaging(home, opt); err != nil {
+		return err
+	}
+	if err := applyPlugins(opt.profile, home, opt.plugins, opt.pluginsDir, opt.depsDir); err != nil {
 		return err
 	}
 	if opt.depsDir == "" {

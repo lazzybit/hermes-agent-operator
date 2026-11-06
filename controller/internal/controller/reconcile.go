@@ -197,8 +197,16 @@ func (r *HermesReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 	if err = apply(ctx, r.Client, r.Scheme, h, GatewayNetworkPolicy(h)); err != nil {
 		return
 	}
+	var channels []api.MessagingChannel
+	if channels, err = syncMessaging(ctx, r.Client, h.Namespace, profiles); err != nil {
+		return
+	}
 	d := Gateway(h, profiles)
+	projectChannels(d, channels)
 	if err = r.configurationRevision(ctx, h, profiles, d); err != nil {
+		return
+	}
+	if err = projectGatewayResources(ctx, r, h, profiles, channels, d); err != nil {
 		return
 	}
 	err = apply(ctx, r.Client, r.Scheme, h, d)
@@ -221,7 +229,22 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 		return result, client.IgnoreNotFound(err)
 	}
 	if !p.DeletionTimestamp.IsZero() {
-		return result, nil
+		if controllerutil.ContainsFinalizer(p, messagingFinalizer) {
+			if err = releaseProfileChannels(ctx, r.Client, p); err != nil {
+				return result, err
+			}
+			controllerutil.RemoveFinalizer(p, messagingFinalizer)
+			err = r.Update(ctx, p)
+		}
+		return result, err
+	}
+	if p.Spec.Messaging == nil {
+		if err = releaseProfileChannels(ctx, r.Client, p); err != nil {
+			return result, err
+		}
+	}
+	if err = ensureMessagingFinalizer(ctx, r.Client, p); err != nil {
+		return result, err
 	}
 	reference := metav1.Condition{Type: "ReferenceValid", Status: metav1.ConditionTrue, Reason: "ReferenceResolved", Message: "Referenced Hermes exists", ObservedGeneration: p.Generation}
 	defer func() { err = finish(ctx, r.Client, p, &p.Status, err, reference) }()
@@ -298,8 +321,20 @@ func (r *HermesReconciler) profileRequests(ctx context.Context, obj client.Objec
 	return out
 }
 func (r *HermesReconciler) SetupWithManager(m ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(m).For(&api.Hermes{}).Owns(&networkingv1.NetworkPolicy{}).Owns(&appsv1.Deployment{}).Owns(&corev1.ConfigMap{}).Watches(&api.HermesProfile{}, handler.EnqueueRequestsFromMapFunc(r.profileRequests)).WatchesMetadata(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(r.configSecretRequests)).Complete(r)
+	return ctrl.NewControllerManagedBy(m).For(&api.Hermes{}).Owns(&networkingv1.NetworkPolicy{}).Owns(&appsv1.Deployment{}).Owns(&corev1.ConfigMap{}).Watches(&api.HermesProfile{}, handler.EnqueueRequestsFromMapFunc(r.profileRequests)).Watches(&api.MessagingChannel{}, handler.EnqueueRequestsFromMapFunc(r.profileRequests)).WatchesMetadata(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(r.configSecretRequests)).Complete(r)
 }
+func (r *ProfileReconciler) channelProfileRequests(ctx context.Context, obj client.Object) []reconcile.Request {
+	list := &api.HermesProfileList{}
+	if err := r.List(ctx, list, client.InNamespace(obj.GetNamespace())); err != nil {
+		return nil
+	}
+	out := make([]reconcile.Request, 0, len(list.Items))
+	for i := range list.Items {
+		out = append(out, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&list.Items[i])})
+	}
+	return out
+}
+
 func (r *ProfileReconciler) parentRequests(ctx context.Context, obj client.Object) []reconcile.Request {
 	list := &api.HermesProfileList{}
 	if err := r.List(ctx, list, client.InNamespace(obj.GetNamespace())); err != nil {
@@ -314,5 +349,5 @@ func (r *ProfileReconciler) parentRequests(ctx context.Context, obj client.Objec
 	return out
 }
 func (r *ProfileReconciler) SetupWithManager(m ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(m).For(&api.HermesProfile{}).Owns(&networkingv1.NetworkPolicy{}).Owns(&appsv1.Deployment{}).Owns(&corev1.Service{}).Owns(&corev1.ConfigMap{}).Watches(&api.Hermes{}, handler.EnqueueRequestsFromMapFunc(r.parentRequests)).Complete(r)
+	return ctrl.NewControllerManagedBy(m).For(&api.HermesProfile{}).Owns(&networkingv1.NetworkPolicy{}).Owns(&appsv1.Deployment{}).Owns(&corev1.Service{}).Owns(&corev1.ConfigMap{}).Watches(&api.Hermes{}, handler.EnqueueRequestsFromMapFunc(r.parentRequests)).Watches(&api.MessagingChannel{}, handler.EnqueueRequestsFromMapFunc(r.channelProfileRequests)).Complete(r)
 }

@@ -71,8 +71,8 @@ Use the published gateway image unless you are replacing that integration.
 A custom image is allowed: set `Hermes.spec.image` to it. A custom image that
 does not implement this same init entry and behavior loses the operator's
 integration. Home bootstrap, config and credential projection, plugins.json
-fetch and Python dependency preparation, and any later CR-driven init steps
-will not run. The operator does not fall back to an embedded script.
+fetch, MessagingChannel setup, and any later CR-driven init steps will not
+run. The operator does not fall back to an embedded script.
 
 The init entry accepts:
 
@@ -80,9 +80,11 @@ The init entry accepts:
 --profile       profile name; empty for the instance home
 --config        /run/hermes-config/<volume>, containing config.yaml
 --credentials   /run/hermes-credentials/<volume>/.env, or empty
---plugins       /run/hermes-config/<volume>/plugins.json
+--plugins       /run/resources/plugins.json
 --plugins-dir   /run/hermes-plugins/<profile> emptyDir
 --plugin-deps   /run/hermes-plugin-deps/<profile> emptyDir
+--messaging     /run/resources/messaging-channel.json
+--generated     /run/generated
 ```
 
 For the instance home, `<profile>` is `default`. The program creates the home
@@ -91,10 +93,10 @@ home at the claim root, links `config.yaml` and `.env` into `$HERMES_HOME`,
 and publishes `.hermes-home`. It does not delete `SOUL.md` or other mutable
 state. Profile homes are linked from the instance profile directory.
 
-`spec.plugins` is optional. Omission or an empty list writes no `plugins.json`
-and installs nothing. When set, the controller stores only that document in
-the managed ConfigMap and includes its checksum in the gateway rollout
-annotation, in the same way as `config.yaml`. The init fetches each pinned
+`spec.plugins` is optional. Omission or an empty list installs nothing. When
+set, the controller projects the declaration in `gateway-resources` at
+`/run/resources/plugins.json`, keyed by profile name, and includes its
+checksum in the gateway rollout annotation. The init fetches each pinned
 tree into the emptyDir and points `$HERMES_HOME/plugins` at that directory.
 Plugin source is not copied onto the retained PVC and is not stored in the
 ConfigMap. A non-empty real `plugins/` directory is left in place and the init
@@ -114,6 +116,21 @@ written there moves those directories behind the sealed environment on
 dependency of the same name. Setting `memory.provider` remains
 `HermesProfile.spec.config`; the init does not enable plugins or select a
 memory provider.
+
+A profile may set `spec.messaging` to claim one namespaced `MessagingChannel`.
+`platform` is immutable and, for `telegram`, requires `spec.telegram` only.
+`spec.telegram.id` is the bot username without `@` (`aaa_bot` for `@aaa_bot`),
+not the numeric user id. `spec.telegram.name` is the display name. The init
+reads `/run/resources/messaging-channel.json`, checks `getMe` username against
+`id`, and calls Bot HTTP API `setMyName` when the live display name differs.
+It does not call MTProto and does not try to change the @username. The bot
+token stays in the referenced Secret, mounted at
+`/run/resources/channels/<channel>/token`. The init writes
+`TELEGRAM_BOT_TOKEN` into `/run/generated/<profile>/.env` and links the profile
+`.env` there, leaving the user's `credentialsSecret` unchanged. Profiles
+without `spec.messaging` keep today's credential projection and receive no
+channel. A custom image that does not implement this init behavior loses
+channel integration.
 
 Later CR-driven setup is added to this init program. The controller's job is
 to mount the declared files and invoke the entry.

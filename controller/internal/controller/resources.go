@@ -89,9 +89,11 @@ func initializeHome(d *appsv1.Deployment, image, volume, name string, credential
 			"--profile", home,
 			"--config", projection,
 			"--credentials", credentialPath,
-			"--plugins", projection + "/plugins.json",
+			"--plugins", "/run/resources/plugins.json",
 			"--plugins-dir", plugins,
 			"--plugin-deps", deps,
+			"--messaging", "/run/resources/messaging-channel.json",
+			"--generated", "/run/generated",
 		},
 		Env: []corev1.EnvVar{{Name: "HOME", Value: "/opt/data"}}, ImagePullPolicy: corev1.PullIfNotPresent,
 		TerminationMessagePath: "/dev/termination-log", TerminationMessagePolicy: corev1.TerminationMessageReadFile, VolumeMounts: mounts,
@@ -127,12 +129,28 @@ func Gateway(h *api.Hermes, profiles []api.HermesProfile) *appsv1.Deployment {
 		sshProjection(d, p.Name, false)
 	}
 	pod.Containers[0].Env = append(pod.Containers[0].Env, corev1.EnvVar{Name: "PYTHONPATH", Value: pluginPythonPath(ps)})
+	mountPodResources(pod)
 	{
 		mode := int32(0444)
 		pod.Volumes = append(pod.Volumes, corev1.Volume{Name: "ssh-client", VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: "gateway-config"}, DefaultMode: &mode, Items: []corev1.KeyToPath{{Key: "ssh_config", Path: "config"}}}}})
 		pod.Containers[0].VolumeMounts = append(pod.Containers[0].VolumeMounts, corev1.VolumeMount{Name: "ssh-client", MountPath: "/opt/data/.ssh", ReadOnly: true})
 	}
 	return d
+}
+
+func mountPodResources(pod *corev1.PodSpec) {
+	pod.Volumes = append(pod.Volumes,
+		corev1.Volume{Name: "resources", VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: resourcesConfigMap}}}},
+		corev1.Volume{Name: "generated", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
+	)
+	mounts := []corev1.VolumeMount{
+		{Name: "resources", MountPath: "/run/resources", ReadOnly: true},
+		{Name: "generated", MountPath: "/run/generated"},
+	}
+	pod.Containers[0].VolumeMounts = append(pod.Containers[0].VolumeMounts, mounts...)
+	for i := range pod.InitContainers {
+		pod.InitContainers[i].VolumeMounts = append(pod.InitContainers[i].VolumeMounts, mounts...)
+	}
 }
 
 func pluginPythonPath(profiles []api.HermesProfile) string {

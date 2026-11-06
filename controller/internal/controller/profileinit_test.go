@@ -23,8 +23,8 @@ func TestGatewayInitializesMountedIdentities(t *testing.T) {
 		t.Fatal("gateway container must keep the declared Hermes command")
 	}
 	want := map[string][]string{
-		"init-home":              {"--profile", "", "--plugins", "/run/hermes-config/home/plugins.json", "--plugins-dir", "/run/hermes-plugins/default", "--credentials", "/run/hermes-credentials/home/.env"},
-		"init-profile-assistant": {"--profile", "assistant", "--plugins", "/run/hermes-config/profile-assistant/plugins.json", "--plugins-dir", "/run/hermes-plugins/assistant"},
+		"init-home":              {"--profile", "", "--plugins", "/run/resources/plugins.json", "--messaging", "/run/resources/messaging-channel.json", "--plugins-dir", "/run/hermes-plugins/default", "--credentials", "/run/hermes-credentials/home/.env"},
+		"init-profile-assistant": {"--profile", "assistant", "--plugins", "/run/resources/plugins.json", "--messaging", "/run/resources/messaging-channel.json", "--plugins-dir", "/run/hermes-plugins/assistant"},
 	}
 	for _, c := range pod.InitContainers {
 		if c.Image != h.Spec.Image || len(c.Command) != 1 || c.Command[0] != gatewayInitEntrypoint {
