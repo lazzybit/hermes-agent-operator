@@ -73,28 +73,15 @@ func loadPlugins(data []byte, profile string) ([]pluginSource, error) {
 	if len(trimmed) == 0 {
 		return nil, nil
 	}
-	if trimmed[0] == '[' {
-		return parsePlugins(data)
-	}
-	var doc struct {
-		Profiles []struct {
-			Name    string          `json:"name"`
-			Plugins json.RawMessage `json:"plugins"`
-		} `json:"profiles"`
-	}
+	var doc map[string]json.RawMessage
 	if err := json.Unmarshal(trimmed, &doc); err != nil {
 		return nil, fmt.Errorf("plugins.json: %w", err)
 	}
-	for _, item := range doc.Profiles {
-		if item.Name != profile {
-			continue
-		}
-		if len(bytes.TrimSpace(item.Plugins)) == 0 || string(bytes.TrimSpace(item.Plugins)) == "null" {
-			return nil, nil
-		}
-		return parsePlugins(item.Plugins)
+	raw, ok := doc[profile]
+	if !ok || len(bytes.TrimSpace(raw)) == 0 || string(bytes.TrimSpace(raw)) == "null" {
+		return nil, nil
 	}
-	return nil, nil
+	return parsePlugins(raw)
 }
 
 func parsePlugins(data []byte) ([]pluginSource, error) {

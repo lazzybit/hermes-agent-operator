@@ -47,7 +47,7 @@ func pluginPaths(profile string) (plugins, deps string) {
 	if id == "" {
 		id = "default"
 	}
-	return "/run/hermes-plugins/" + id, "/run/hermes-plugin-deps/" + id
+	return "/run/hermes/resources/plugins/" + id, "/run/hermes-plugin-deps/" + id
 }
 
 // initializeHome mounts the projected inputs and invokes the gateway image init.
@@ -89,11 +89,11 @@ func initializeHome(d *appsv1.Deployment, image, volume, name string, credential
 			"--profile", home,
 			"--config", projection,
 			"--credentials", credentialPath,
-			"--plugins", "/run/resources/plugins.json",
+			"--plugins", "/run/hermes/resources/plugins.json",
 			"--plugins-dir", plugins,
 			"--plugin-deps", deps,
-			"--messaging", "/run/resources/messaging-channel.json",
-			"--generated", "/run/generated",
+			"--messaging", "/run/hermes/resources/messaging-channel.json",
+			"--generated", "/run/hermes/generated",
 		},
 		Env: []corev1.EnvVar{{Name: "HOME", Value: "/opt/data"}}, ImagePullPolicy: corev1.PullIfNotPresent,
 		TerminationMessagePath: "/dev/termination-log", TerminationMessagePolicy: corev1.TerminationMessageReadFile, VolumeMounts: mounts,
@@ -144,8 +144,8 @@ func mountPodResources(pod *corev1.PodSpec) {
 		corev1.Volume{Name: "generated", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
 	)
 	mounts := []corev1.VolumeMount{
-		{Name: "resources", MountPath: "/run/resources", ReadOnly: true},
-		{Name: "generated", MountPath: "/run/generated"},
+		{Name: "resources", MountPath: "/run/hermes/resources", ReadOnly: true},
+		{Name: "generated", MountPath: "/run/hermes/generated"},
 	}
 	pod.Containers[0].VolumeMounts = append(pod.Containers[0].VolumeMounts, mounts...)
 	for i := range pod.InitContainers {

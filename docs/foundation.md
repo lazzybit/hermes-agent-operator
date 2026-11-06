@@ -63,9 +63,9 @@ Existing root-owned hostPath data still requires compatible ownership; fsGroup
 alone cannot transfer ownership of old runtime files.
 
 Optional `spec.plugins` is projected with every other home in
-`/run/resources/plugins.json`. A missing entry or empty list does nothing.
+`/run/hermes/resources/plugins.json`, keyed by profile name. A missing entry or empty list does nothing.
 Otherwise the init fetches each `repository` at the full
-40-character commit `revision` into an emptyDir at `/run/hermes-plugins/<profile>`
+40-character commit `revision` into an emptyDir at `/run/hermes/resources/plugins/<profile>`
 (`default` for the instance home) and points `$HERMES_HOME/plugins` at it.
 `path` selects a subdirectory and cannot contain `..`. Fetched source is not
 written to the retained PVC or the ConfigMap. A pre-existing non-empty

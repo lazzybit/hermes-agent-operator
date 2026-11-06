@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -222,23 +223,9 @@ func ensureMessagingFinalizer(ctx context.Context, c client.Client, profile *api
 	return c.Patch(ctx, profile, client.MergeFrom(base))
 }
 
-type resourcePlugins struct {
-	Profiles []resourcePluginProfile `json:"profiles"`
-}
-
-type resourcePluginProfile struct {
-	Name    string             `json:"name"`
-	Plugins []api.PluginSource `json:"plugins"`
-}
-
-type resourceChannels struct {
-	Channels []resourceChannel `json:"channels"`
-}
-
 type resourceChannel struct {
 	Platform  string            `json:"platform"`
 	Name      string            `json:"name"`
-	Profile   string            `json:"profile"`
 	TokenPath string            `json:"tokenPath"`
 	Telegram  *resourceTelegram `json:"telegram,omitempty"`
 }
@@ -279,12 +266,12 @@ func projectGatewayResources(ctx context.Context, r *HermesReconciler, h *api.He
 }
 
 func resourcesPlugins(h *api.Hermes, profiles []api.HermesProfile) ([]byte, error) {
-	doc := resourcePlugins{}
+	doc := map[string][]api.PluginSource{}
 	if len(h.Spec.Plugins) > 0 {
 		if _, err := pluginsDocument(h.Spec.Plugins); err != nil {
 			return nil, fmt.Errorf("%s spec.plugins: %w", h.Name, err)
 		}
-		doc.Profiles = append(doc.Profiles, resourcePluginProfile{Name: "", Plugins: h.Spec.Plugins})
+		doc[""] = h.Spec.Plugins
 	}
 	ordered := append([]api.HermesProfile(nil), profiles...)
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i].Name < ordered[j].Name })
@@ -295,16 +282,9 @@ func resourcesPlugins(h *api.Hermes, profiles []api.HermesProfile) ([]byte, erro
 		if _, err := pluginsDocument(profile.Spec.Plugins); err != nil {
 			return nil, fmt.Errorf("%s spec.plugins: %w", profile.Name, err)
 		}
-		doc.Profiles = append(doc.Profiles, resourcePluginProfile{Name: profile.Name, Plugins: profile.Spec.Plugins})
+		doc[profile.Name] = profile.Spec.Plugins
 	}
-	if doc.Profiles == nil {
-		doc.Profiles = []resourcePluginProfile{}
-	}
-	data, err := json.MarshalIndent(doc, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-	return append(data, '\n'), nil
+	return marshalSortedJSON(doc)
 }
 
 func resourcesChannels(channels []api.MessagingChannel, profiles []api.HermesProfile) ([]byte, error) {
@@ -312,7 +292,7 @@ func resourcesChannels(channels []api.MessagingChannel, profiles []api.HermesPro
 	for _, profile := range profiles {
 		byUID[profile.UID] = profile.Name
 	}
-	doc := resourceChannels{Channels: []resourceChannel{}}
+	doc := map[string]resourceChannel{}
 	ordered := append([]api.MessagingChannel(nil), channels...)
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i].Name < ordered[j].Name })
 	for _, channel := range ordered {
@@ -323,19 +303,52 @@ func resourcesChannels(channels []api.MessagingChannel, profiles []api.HermesPro
 		if !ok || channel.Spec.Telegram == nil {
 			continue
 		}
-		doc.Channels = append(doc.Channels, resourceChannel{
+		doc[profile] = resourceChannel{
 			Platform:  channel.Spec.Platform,
 			Name:      channel.Name,
-			Profile:   profile,
-			TokenPath: "/run/resources/channels/" + channel.Name + "/token",
+			TokenPath: "/run/hermes/resources/channels/" + channel.Name + "/token",
 			Telegram:  &resourceTelegram{ID: channel.Spec.Telegram.ID, Name: channel.Spec.Telegram.Name},
-		})
+		}
 	}
-	data, err := json.MarshalIndent(doc, "", "  ")
+	return marshalSortedJSON(doc)
+}
+
+func marshalSortedJSON(v any) ([]byte, error) {
+	raw, err := json.Marshal(v)
 	if err != nil {
 		return nil, err
 	}
-	return append(data, '\n'), nil
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return nil, err
+	}
+	keys := make([]string, 0, len(obj))
+	for key := range obj {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	var buf bytes.Buffer
+	buf.WriteString("{\n")
+	for i, key := range keys {
+		encoded, err := json.Marshal(key)
+		if err != nil {
+			return nil, err
+		}
+		var pretty bytes.Buffer
+		if err := json.Indent(&pretty, obj[key], "  ", "  "); err != nil {
+			return nil, err
+		}
+		buf.WriteString("  ")
+		buf.Write(encoded)
+		buf.WriteString(": ")
+		buf.Write(pretty.Bytes())
+		if i+1 < len(keys) {
+			buf.WriteByte(',')
+		}
+		buf.WriteByte('\n')
+	}
+	buf.WriteString("}\n")
+	return buf.Bytes(), nil
 }
 
 func messagingRollout(ctx context.Context, r *HermesReconciler, h *api.Hermes, channels []api.MessagingChannel) (string, error) {
@@ -383,7 +396,7 @@ func projectChannels(d *appsv1.Deployment, channels []api.MessagingChannel) {
 			SecretName: ref.Name, DefaultMode: &mode, Optional: ref.Optional,
 			Items: []corev1.KeyToPath{{Key: ref.Key, Path: "token"}},
 		}}})
-		mount := corev1.VolumeMount{Name: volume, MountPath: "/run/resources/channels/" + channel.Name, ReadOnly: true}
+		mount := corev1.VolumeMount{Name: volume, MountPath: "/run/hermes/resources/channels/" + channel.Name, ReadOnly: true}
 		pod.Containers[0].VolumeMounts = append(pod.Containers[0].VolumeMounts, mount)
 		for i := range pod.InitContainers {
 			pod.InitContainers[i].VolumeMounts = append(pod.InitContainers[i].VolumeMounts, mount)

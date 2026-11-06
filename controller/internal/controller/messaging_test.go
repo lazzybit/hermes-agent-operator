@@ -71,7 +71,7 @@ func TestMessagingBindReleaseAndProjection(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := raw.Data["messaging-channel.json"]
-	for _, want := range []string{`"id": "ccc_bot"`, `"name": "Named Bot"`, `"profile": "beta"`, `/run/resources/channels/telegram-9/token`} {
+	for _, want := range []string{`"id": "ccc_bot"`, `"name": "Named Bot"`, `"beta":`, `/run/hermes/resources/channels/telegram-9/token`} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("document missing %s\n%s", want, text)
 		}
@@ -81,7 +81,7 @@ func TestMessagingBindReleaseAndProjection(t *testing.T) {
 	}
 	found := false
 	for _, mount := range d.Spec.Template.Spec.Containers[0].VolumeMounts {
-		if mount.MountPath == "/run/resources/channels/telegram-9" && mount.ReadOnly {
+		if mount.MountPath == "/run/hermes/resources/channels/telegram-9" && mount.ReadOnly {
 			found = true
 		}
 	}

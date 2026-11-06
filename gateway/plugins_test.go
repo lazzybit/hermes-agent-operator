@@ -45,6 +45,27 @@ func TestPluginsJSONContract(t *testing.T) {
 	}
 }
 
+func TestLoadPluginsKeyedByProfile(t *testing.T) {
+	sha := strings.Repeat("ab", 20)
+	plugin := `[{"name":"hindsight","repository":"https://github.com/vectorize-io/hindsight","revision":"` + sha + `"}]`
+	doc := `{"":` + plugin + `,"canary":` + plugin + `,"other":[]}`
+	sources, err := loadPlugins([]byte(doc), "canary")
+	if err != nil || len(sources) != 1 || sources[0].Name != "hindsight" {
+		t.Fatalf("canary %#v %v", sources, err)
+	}
+	empty, err := loadPlugins([]byte(doc), "other")
+	if err != nil || len(empty) != 0 {
+		t.Fatalf("other %#v %v", empty, err)
+	}
+	missing, err := loadPlugins([]byte(`{}`), "canary")
+	if err != nil || len(missing) != 0 {
+		t.Fatalf("missing %#v %v", missing, err)
+	}
+	if _, err := loadPlugins([]byte(plugin), "canary"); err == nil {
+		t.Fatal("bare plugin array was accepted")
+	}
+}
+
 func TestApplyPluginsMissingOrEmptyIsNoop(t *testing.T) {
 	home := t.TempDir()
 	if err := os.Mkdir(filepath.Join(home, "plugins"), 0o755); err != nil {
@@ -57,7 +78,7 @@ func TestApplyPluginsMissingOrEmptyIsNoop(t *testing.T) {
 		t.Fatal(err)
 	}
 	manifest := filepath.Join(t.TempDir(), "plugins.json")
-	if err := os.WriteFile(manifest, []byte("[]\n"), 0o644); err != nil {
+	if err := os.WriteFile(manifest, []byte("{}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := applyPlugins("", home, manifest, t.TempDir(), t.TempDir()); err != nil {
@@ -92,7 +113,7 @@ func TestApplyPluginsProjectsTreeAndDependencies(t *testing.T) {
 	}
 	t.Setenv("HERMES_PLUGIN_INSTALLER", installer)
 	manifest := filepath.Join(t.TempDir(), "plugins.json")
-	body := `[{"name":"hindsight","repository":"https://github.com/vectorize-io/hindsight","revision":"` + strings.ToUpper(sha) + `","path":"hindsight-integrations/hermes"}]`
+	body := `{"":[{"name":"hindsight","repository":"https://github.com/vectorize-io/hindsight","revision":"` + strings.ToUpper(sha) + `","path":"hindsight-integrations/hermes"}]}`
 	if err := os.WriteFile(manifest, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +156,7 @@ func TestApplyPluginsRefusesNonEmptyDirectory(t *testing.T) {
 	}
 	t.Cleanup(func() { fetchPlugin = orig })
 	manifest := filepath.Join(t.TempDir(), "plugins.json")
-	body := `[{"name":"hindsight","repository":"https://example.com/hindsight.git","revision":"` + sha + `"}]`
+	body := `{"":[{"name":"hindsight","repository":"https://example.com/hindsight.git","revision":"` + sha + `"}]}`
 	if err := os.WriteFile(manifest, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +185,7 @@ func TestApplyPluginsReplacesEmptyDirectory(t *testing.T) {
 	}
 	t.Cleanup(func() { fetchPlugin = orig })
 	manifest := filepath.Join(t.TempDir(), "plugins.json")
-	body := `[{"name":"tool","repository":"https://example.com/tool.git","revision":"` + sha + `"}]`
+	body := `{"":[{"name":"tool","repository":"https://example.com/tool.git","revision":"` + sha + `"}]}`
 	if err := os.WriteFile(manifest, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}

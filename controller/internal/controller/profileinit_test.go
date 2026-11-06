@@ -23,8 +23,8 @@ func TestGatewayInitializesMountedIdentities(t *testing.T) {
 		t.Fatal("gateway container must keep the declared Hermes command")
 	}
 	want := map[string][]string{
-		"init-home":              {"--profile", "", "--plugins", "/run/resources/plugins.json", "--messaging", "/run/resources/messaging-channel.json", "--plugins-dir", "/run/hermes-plugins/default", "--credentials", "/run/hermes-credentials/home/.env"},
-		"init-profile-assistant": {"--profile", "assistant", "--plugins", "/run/resources/plugins.json", "--messaging", "/run/resources/messaging-channel.json", "--plugins-dir", "/run/hermes-plugins/assistant"},
+		"init-home":              {"--profile", "", "--plugins", "/run/hermes/resources/plugins.json", "--messaging", "/run/hermes/resources/messaging-channel.json", "--plugins-dir", "/run/hermes/resources/plugins/default", "--generated", "/run/hermes/generated", "--credentials", "/run/hermes-credentials/home/.env"},
+		"init-profile-assistant": {"--profile", "assistant", "--plugins", "/run/hermes/resources/plugins.json", "--messaging", "/run/hermes/resources/messaging-channel.json", "--plugins-dir", "/run/hermes/resources/plugins/assistant", "--generated", "/run/hermes/generated"},
 	}
 	for _, c := range pod.InitContainers {
 		if c.Image != h.Spec.Image || len(c.Command) != 1 || c.Command[0] != gatewayInitEntrypoint {
@@ -46,7 +46,7 @@ func TestGatewayInitializesMountedIdentities(t *testing.T) {
 			if m.SubPath != "" {
 				t.Fatal("kubelet must not create a native target via subPath")
 			}
-			if m.MountPath == "/run/hermes-plugins/default" || m.MountPath == "/run/hermes-plugins/assistant" {
+			if m.MountPath == "/run/hermes/resources/plugins/default" || m.MountPath == "/run/hermes/resources/plugins/assistant" {
 				if m.ReadOnly {
 					t.Fatal("init must be able to write the plugin projection")
 				}
@@ -57,7 +57,7 @@ func TestGatewayInitializesMountedIdentities(t *testing.T) {
 		if m.SubPath != "" {
 			t.Fatal("configuration and state must use independent directories")
 		}
-		if m.MountPath == "/run/hermes-plugins/assistant" && !m.ReadOnly {
+		if m.MountPath == "/run/hermes/resources/plugins/assistant" && !m.ReadOnly {
 			t.Fatal("plugin projection must be read-only for the gateway process")
 		}
 	}

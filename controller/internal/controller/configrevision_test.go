@@ -104,7 +104,7 @@ func TestConfigurationAutomaticRollouts(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, ok := generated.Data["plugins.json"]; ok {
-		t.Fatal("plugins.json must be projected at /run/resources, not the profile config")
+		t.Fatal("plugins.json must be projected at /run/hermes/resources, not the profile config")
 	}
 	if render().Spec.Template.Annotations[configRevision] != withPlugins.Spec.Template.Annotations[configRevision] {
 		t.Fatal("unchanged plugins.json changed rollout")

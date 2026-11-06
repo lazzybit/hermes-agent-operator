@@ -15,14 +15,9 @@ import (
 // telegramAPI is the Bot HTTP API origin. Tests point it at a local server.
 var telegramAPI = "https://api.telegram.org"
 
-type messagingDocument struct {
-	Channels []messagingChannel `json:"channels"`
-}
-
 type messagingChannel struct {
 	Platform  string             `json:"platform"`
 	Name      string             `json:"name"`
-	Profile   string             `json:"profile"`
 	TokenPath string             `json:"tokenPath"`
 	Telegram  *messagingTelegram `json:"telegram"`
 }
@@ -32,7 +27,7 @@ type messagingTelegram struct {
 	Name string `json:"name"`
 }
 
-// applyMessaging projects a claimed Telegram channel into /run/generated and
+// applyMessaging projects a claimed Telegram channel into /run/hermes/generated and
 // reconciles the bot display name with setMyName. id is the @username without
 // @ and is only checked, never changed. The token is read from tokenPath and
 // is not written back to the user's credential file.
@@ -50,20 +45,12 @@ func applyMessaging(home string, opt options) error {
 	if strings.TrimSpace(string(data)) == "" {
 		return nil
 	}
-	var doc messagingDocument
+	var doc map[string]messagingChannel
 	if err := json.Unmarshal(data, &doc); err != nil {
 		return fmt.Errorf("messaging-channel.json: %w", err)
 	}
-	var channel *messagingChannel
-	for i := range doc.Channels {
-		if doc.Channels[i].Profile == opt.profile {
-			if channel != nil {
-				return fmt.Errorf("messaging-channel.json has two channels for profile %q", opt.profile)
-			}
-			channel = &doc.Channels[i]
-		}
-	}
-	if channel == nil {
+	channel, ok := doc[opt.profile]
+	if !ok {
 		return nil
 	}
 	if channel.Platform != "telegram" || channel.Telegram == nil {
@@ -89,7 +76,7 @@ func applyMessaging(home string, opt options) error {
 	}
 	dir := opt.generated
 	if dir == "" {
-		dir = "/run/generated"
+		dir = "/run/hermes/generated"
 	}
 	id := opt.profile
 	if id == "" {

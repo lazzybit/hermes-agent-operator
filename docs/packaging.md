@@ -80,11 +80,11 @@ The init entry accepts:
 --profile       profile name; empty for the instance home
 --config        /run/hermes-config/<volume>, containing config.yaml
 --credentials   /run/hermes-credentials/<volume>/.env, or empty
---plugins       /run/resources/plugins.json
---plugins-dir   /run/hermes-plugins/<profile> emptyDir
+--plugins       /run/hermes/resources/plugins.json
+--plugins-dir   /run/hermes/resources/plugins/<profile> emptyDir
 --plugin-deps   /run/hermes-plugin-deps/<profile> emptyDir
---messaging     /run/resources/messaging-channel.json
---generated     /run/generated
+--messaging     /run/hermes/resources/messaging-channel.json
+--generated     /run/hermes/generated
 ```
 
 For the instance home, `<profile>` is `default`. The program creates the home
@@ -95,9 +95,11 @@ state. Profile homes are linked from the instance profile directory.
 
 `spec.plugins` is optional. Omission or an empty list installs nothing. When
 set, the controller projects the declaration in `gateway-resources` at
-`/run/resources/plugins.json`, keyed by profile name, and includes its
+`/run/hermes/resources/plugins.json` as an object keyed by profile name
+(the `--profile` value; the instance home uses `""`), and includes its
 checksum in the gateway rollout annotation. The init fetches each pinned
-tree into the emptyDir and points `$HERMES_HOME/plugins` at that directory.
+tree into the emptyDir at `/run/hermes/resources/plugins/<profile>`
+(`default` for the instance home) and points `$HERMES_HOME/plugins` at that directory.
 Plugin source is not copied onto the retained PVC and is not stored in the
 ConfigMap. A non-empty real `plugins/` directory is left in place and the init
 fails, because replacing it would delete existing data.
@@ -121,12 +123,14 @@ A profile may set `spec.messaging` to claim one namespaced `MessagingChannel`.
 `platform` is immutable and, for `telegram`, requires `spec.telegram` only.
 `spec.telegram.id` is the bot username without `@` (`aaa_bot` for `@aaa_bot`),
 not the numeric user id. `spec.telegram.name` is the display name. The init
-reads `/run/resources/messaging-channel.json`, checks `getMe` username against
+reads `/run/hermes/resources/messaging-channel.json`, an object keyed by
+profile name whose value is the claimed channel (`platform`, `name`,
+`tokenPath`, and `telegram`). It checks `getMe` username against
 `id`, and calls Bot HTTP API `setMyName` when the live display name differs.
 It does not call MTProto and does not try to change the @username. The bot
 token stays in the referenced Secret, mounted at
-`/run/resources/channels/<channel>/token`. The init writes
-`TELEGRAM_BOT_TOKEN` into `/run/generated/<profile>/.env` and links the profile
+`/run/hermes/resources/channels/<channel>/token`. The init writes
+`TELEGRAM_BOT_TOKEN` into `/run/hermes/generated/<profile>/.env` and links the profile
 `.env` there, leaving the user's `credentialsSecret` unchanged. Profiles
 without `spec.messaging` keep today's credential projection and receive no
 channel. A custom image that does not implement this init behavior loses

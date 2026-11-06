@@ -50,7 +50,7 @@ func TestTelegramNameIsReconciled(t *testing.T) {
 		t.Fatal(err)
 	}
 	manifest := filepath.Join(t.TempDir(), "messaging-channel.json")
-	document := `{"channels":[{"platform":"telegram","name":"telegram-1","profile":"canary","tokenPath":"` + tokenPath + `","telegram":{"id":"aaa_bot","name":"Example Bot"}}]}`
+	document := `{"canary":{"platform":"telegram","name":"telegram-1","tokenPath":"` + tokenPath + `","telegram":{"id":"aaa_bot","name":"Example Bot"}}}`
 	if err := os.WriteFile(manifest, []byte(document), 0o644); err != nil {
 		t.Fatal(err)
 	}
