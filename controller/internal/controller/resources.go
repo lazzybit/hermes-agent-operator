@@ -9,6 +9,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sort"
+	"strings"
 )
 
 func labels(name, component string) map[string]string {
@@ -37,8 +38,21 @@ func mount(d *appsv1.Deployment, name, claim, path string, storage api.StorageSp
 	p.Containers[0].VolumeMounts = append(p.Containers[0].VolumeMounts, m)
 }
 
-// initializeHome uses upstream's atomic profile creation on a child of the mounted
-// claim. Existing legacy homes stay in place; only declarative file links change.
+// gatewayInitEntrypoint is the stable init program in the project gateway image.
+// A custom Hermes.spec.image must provide the same entry and behavior.
+const gatewayInitEntrypoint = "/usr/local/bin/hermes-gateway-init"
+
+func pluginPaths(profile string) (plugins, deps string) {
+	id := profile
+	if id == "" {
+		id = "default"
+	}
+	return "/run/hermes-plugins/" + id, "/run/hermes-plugin-deps/" + id
+}
+
+// initializeHome mounts the projected inputs and invokes the gateway image init.
+// Home layout, config and credential links, and plugins.json handling live in
+// that entry. Existing legacy homes stay in place; only declarative file links change.
 func initializeHome(d *appsv1.Deployment, image, volume, name string, credentials *corev1.SecretKeySelector, home string) {
 	p := &d.Spec.Template.Spec
 	mode := int32(0440)
@@ -56,43 +70,33 @@ func initializeHome(d *appsv1.Deployment, image, volume, name string, credential
 		mounts = append(mounts, m)
 		p.Containers[0].VolumeMounts = append(p.Containers[0].VolumeMounts, m)
 	}
-	p.InitContainers = append(p.InitContainers, corev1.Container{Name: "init-" + volume, Image: image, SecurityContext: restrictedContainer(), Command: []string{"/opt/hermes/.venv/bin/python", "-c", nativeInitialize}, Args: []string{home, projection, credentialPath}, Env: []corev1.EnvVar{{Name: "HOME", Value: "/opt/data"}}, ImagePullPolicy: corev1.PullIfNotPresent, TerminationMessagePath: "/dev/termination-log", TerminationMessagePolicy: corev1.TerminationMessageReadFile, VolumeMounts: mounts})
+	plugins, deps := pluginPaths(home)
+	pluginVol, depVol := "plugins-"+volume, "plugin-deps-"+volume
+	p.Volumes = append(p.Volumes,
+		corev1.Volume{Name: pluginVol, VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
+		corev1.Volume{Name: depVol, VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
+	)
+	pluginMount := corev1.VolumeMount{Name: pluginVol, MountPath: plugins}
+	depMount := corev1.VolumeMount{Name: depVol, MountPath: deps}
+	mounts = append(mounts, pluginMount, depMount)
+	roPlugin, roDeps := pluginMount, depMount
+	roPlugin.ReadOnly, roDeps.ReadOnly = true, false
+	p.Containers[0].VolumeMounts = append(p.Containers[0].VolumeMounts, roPlugin, roDeps)
+	p.InitContainers = append(p.InitContainers, corev1.Container{
+		Name: "init-" + volume, Image: image, SecurityContext: restrictedContainer(),
+		Command: []string{gatewayInitEntrypoint},
+		Args: []string{
+			"--profile", home,
+			"--config", projection,
+			"--credentials", credentialPath,
+			"--plugins", projection + "/plugins.json",
+			"--plugins-dir", plugins,
+			"--plugin-deps", deps,
+		},
+		Env: []corev1.EnvVar{{Name: "HOME", Value: "/opt/data"}}, ImagePullPolicy: corev1.PullIfNotPresent,
+		TerminationMessagePath: "/dev/termination-log", TerminationMessagePolicy: corev1.TerminationMessageReadFile, VolumeMounts: mounts,
+	})
 }
-
-const nativeInitialize = `
-import os, pathlib, subprocess, sys, tempfile
-root = pathlib.Path('/profile')
-# Old claims already contain runtime state at their root. Keep that layout.
-legacy = any((root / name).exists() for name in ('.env', 'config.yaml', 'SOUL.md', 'state.db', 'profiles'))
-home = root if legacy else root / 'home'
-if not home.exists():
-    with tempfile.TemporaryDirectory(dir=root) as staging:
-        subprocess.run(['/opt/hermes/.venv/bin/hermes', 'profile', 'create', 'managed', '--no-alias'], env={**os.environ, 'HERMES_HOME': staging}, check=True)
-        (pathlib.Path(staging) / 'profiles' / 'managed').rename(home)
-os.chmod(home, 0o700)
-for filename, target in [('config.yaml', sys.argv[2] + '/config.yaml'), ('.env', sys.argv[3])]:
-    if target:
-        path = home / filename
-        if not path.is_symlink() or os.readlink(path) != target:
-            path.unlink(missing_ok=True)
-            path.symlink_to(target)
-# Expose a stable home without pre-creating native create's destination.
-link = root / '.hermes-home'
-if not link.is_symlink():
-    link.symlink_to('.' if legacy else 'home', target_is_directory=True)
-if sys.argv[1]:
-    profiles = pathlib.Path('/instance/.hermes-home/profiles')
-    profiles.mkdir(exist_ok=True)
-    path = profiles / sys.argv[1]
-    target = '/run/hermes-profiles/' + sys.argv[1] + '/.hermes-home'
-    if path.is_symlink():
-        path.unlink()
-    elif path.is_dir():
-        # A previous nested PVC mount may leave an empty directory in the parent.
-        # Never discard state accidentally left in the instance claim.
-        path.rmdir()
-    path.symlink_to(target, target_is_directory=True)
-`
 
 // Gateway sorts a copy so informer objects are never mutated.
 func Gateway(h *api.Hermes, profiles []api.HermesProfile) *appsv1.Deployment {
@@ -122,12 +126,21 @@ func Gateway(h *api.Hermes, profiles []api.HermesProfile) *appsv1.Deployment {
 		init.VolumeMounts = append(init.VolumeMounts, corev1.VolumeMount{Name: "home", MountPath: "/instance"})
 		sshProjection(d, p.Name, false)
 	}
+	pod.Containers[0].Env = append(pod.Containers[0].Env, corev1.EnvVar{Name: "PYTHONPATH", Value: pluginPythonPath(ps)})
 	{
 		mode := int32(0444)
 		pod.Volumes = append(pod.Volumes, corev1.Volume{Name: "ssh-client", VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: "gateway-config"}, DefaultMode: &mode, Items: []corev1.KeyToPath{{Key: "ssh_config", Path: "config"}}}}})
 		pod.Containers[0].VolumeMounts = append(pod.Containers[0].VolumeMounts, corev1.VolumeMount{Name: "ssh-client", MountPath: "/opt/data/.ssh", ReadOnly: true})
 	}
 	return d
+}
+
+func pluginPythonPath(profiles []api.HermesProfile) string {
+	parts := []string{"/run/hermes-plugin-deps/default"}
+	for _, p := range profiles {
+		parts = append(parts, "/run/hermes-plugin-deps/"+p.Name)
+	}
+	return strings.Join(parts, ":")
 }
 
 func Terminal(p *api.HermesProfile) (*appsv1.Deployment, *corev1.Service) {

@@ -15,7 +15,7 @@ func TestGatewayControllerSSHProfileScopedWiring(t *testing.T) {
 		found := false
 		for _, c := range pod.InitContainers {
 			if c.Name == "init-profile-"+profile {
-				found = len(c.Args) == 3 && c.Args[0] == profile
+				found = len(c.Command) == 1 && c.Command[0] == gatewayInitEntrypoint && argValue(c.Args, "--profile", profile)
 			}
 		}
 		if !found {

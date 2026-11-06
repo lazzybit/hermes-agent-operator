@@ -82,6 +82,31 @@ func TestConfigurationAutomaticRollouts(t *testing.T) {
 	if strings.Contains(data, "FIXTURE_TOKEN") {
 		t.Fatal("credentials leaked into public config")
 	}
+	sha := strings.Repeat("ab", 20)
+	beforePlugins := render().Spec.Template.Annotations[configRevision]
+	p.Spec.Plugins = []api.PluginSource{{Name: "hindsight", Repository: "https://github.com/vectorize-io/hindsight", Revision: sha, Path: "hindsight-integrations/hermes"}}
+	withPlugins := render()
+	if withPlugins.Spec.Template.Annotations[configRevision] == beforePlugins {
+		t.Fatal("plugins.json must roll the gateway")
+	}
+	if err := c.Get(ctx, client.ObjectKey{Namespace: h.Namespace, Name: "profile-config-" + p.Name}, generated); err != nil {
+		t.Fatal(err)
+	}
+	document := generated.Data["plugins.json"]
+	if !strings.Contains(document, sha) || strings.Contains(document, "plugin.py") {
+		t.Fatal("plugins.json must be the declaration, not fetched plugin bytes")
+	}
+	if render().Spec.Template.Annotations[configRevision] != withPlugins.Spec.Template.Annotations[configRevision] {
+		t.Fatal("unchanged plugins.json changed rollout")
+	}
+	p.Spec.Plugins[0].Revision = strings.Repeat("cd", 20)
+	if render().Spec.Template.Annotations[configRevision] == withPlugins.Spec.Template.Annotations[configRevision] {
+		t.Fatal("plugin revision must roll the gateway")
+	}
+	p.Spec.Plugins = append(p.Spec.Plugins, p.Spec.Plugins[0])
+	if err := r.configurationRevision(ctx, h, []api.HermesProfile{*p}, Gateway(h, []api.HermesProfile{*p})); err == nil {
+		t.Fatal("duplicate plugin name accepted")
+	}
 }
 
 func TestInstanceAndProfileSameNameConfigIsolation(t *testing.T) {

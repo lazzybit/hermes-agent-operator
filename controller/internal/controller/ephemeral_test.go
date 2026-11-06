@@ -65,8 +65,8 @@ func TestEphemeralReconcile(t *testing.T) {
 	gateway := Gateway(h, []api.HermesProfile{*p})
 	for _, init := range gateway.Spec.Template.Spec.InitContainers {
 		if init.Name == "init-home" || init.Name == "init-profile-alpha" {
-			if len(init.Command) != 3 || init.Command[2] != nativeInitialize {
-				t.Fatalf("ephemeral home must be initialized in a nonroot-owned child directory: %v", init.Args)
+			if len(init.Command) != 1 || init.Command[0] != gatewayInitEntrypoint || !containsArg(init.Args, "--config") {
+				t.Fatalf("ephemeral home must be initialized by the gateway entry: %v", init.Args)
 			}
 		}
 	}

@@ -10,8 +10,12 @@ resource reconciliation does not establish application readiness.
   including the expected CoreDNS labels and public TCP 443 egress restrictions.
 - Cluster privileges for CRD installation and administration of a dedicated
   namespace. Runtime controller access is namespaced, including Secret access.
-- Tested, preferably digest-pinned controller, official Hermes gateway and SSH
-  terminal images. Release CI currently builds project images for Linux ARM64.
+- Tested, preferably digest-pinned controller, gateway, and SSH terminal images.
+  The gateway image is `ghcr.io/lazzybit/hermes-agent-gateway`, built from the
+  pinned official Hermes agent image. A custom gateway image must implement
+  `/usr/local/bin/hermes-gateway-init` or home, config, credential, and plugin
+  integration will not work. Release CI currently builds project images for
+  Linux ARM64.
 - Provider and messaging credentials appropriate to your Hermes configuration.
 
 ## Install the operator

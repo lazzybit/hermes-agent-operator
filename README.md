@@ -24,8 +24,11 @@ established. Profiles share a trusted gateway, not a hard tenant isolation bound
 ## Get started
 
 You need a Kubernetes cluster with storage provisioning, a NetworkPolicy-capable
-CNI and permission to install CRDs. Select tested controller and terminal image
-versions before installing.
+CNI and permission to install CRDs. Select tested controller, gateway, and
+terminal image versions before installing. The sample gateway image is the
+project image built from official Hermes. A custom gateway image must provide
+the same init entry or the operator cannot set up homes, config, credentials,
+or plugins.
 
 1. Clone this repository and review `config/default` for the dedicated `hermes-lab`
    namespace. Pin the controller image in `config/manager/manager.yaml`.
@@ -63,7 +66,9 @@ provision another terminal workspace.
 
 ## Repository layout
 
-`controller/` contains the Go module and controller image build. `terminal/`
+`controller/` contains the operator Go module and controller image build.
+`gateway/` contains the gateway image build and its init program. `terminal/`
 contains the independent SSH image build, with no Go build dependency. `config/`
 contains operator installation manifests and samples; `docs/` contains detailed
-guides and references.
+guides and references. See [the gateway image contract](docs/packaging.md)
+before substituting `Hermes.spec.image`.

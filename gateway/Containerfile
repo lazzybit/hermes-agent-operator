@@ -1,0 +1,16 @@
+# Official Hermes agent plus /usr/local/bin/hermes-gateway-init.
+# The upstream entrypoint is unchanged. Kubernetes overrides the gateway
+# container command and invokes the init entry only from the init container.
+# A custom image that does not provide this entry cannot perform home,
+# config, credential, or plugin integration.
+FROM golang:1.24.13 AS builder
+WORKDIR /src
+COPY go.mod ./
+COPY *.go ./
+RUN CGO_ENABLED=0 go build -trimpath -o /hermes-gateway-init .
+
+FROM nousresearch/hermes-agent:v0.22.7@sha256:e6d81ae52ebf6a43efa529701405509f20054ba818f179ddd748bed4f8af584c
+USER root
+COPY --from=builder /hermes-gateway-init /usr/local/bin/hermes-gateway-init
+RUN chmod 0755 /usr/local/bin/hermes-gateway-init
+USER 10000:10000

@@ -46,6 +46,28 @@ type SSHSpec struct {
 	RenewBeforeSeconds int64 `json:"renewBeforeSeconds,omitempty"`
 }
 
+// PluginSource is one pinned tree in the projected plugins.json document.
+// The gateway init fetches it. This API does not install or enable the plugin.
+type PluginSource struct {
+	// Name is the directory under $HERMES_HOME/plugins/<name>.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=128
+	// +kubebuilder:validation:Pattern=`^[A-Za-z0-9][A-Za-z0-9._-]*$`
+	Name string `json:"name"`
+	// Repository is the HTTPS Git remote. Credentials are not accepted.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=512
+	// +kubebuilder:validation:Pattern=`^https://[^@\s]+$`
+	Repository string `json:"repository"`
+	// Revision is the full 40-character commit SHA. Tags and branches are rejected.
+	// +kubebuilder:validation:Pattern=`^[0-9a-fA-F]{40}$`
+	Revision string `json:"revision"`
+	// Path is an optional subdirectory inside the repository.
+	// +kubebuilder:validation:MaxLength=512
+	// +kubebuilder:validation:XValidation:rule="!self.contains('..') && !self.startsWith('/')",message="path must be a relative subdirectory without .."
+	Path string `json:"path,omitempty"`
+}
+
 type HermesSpec struct {
 	// SSH optionally overrides managed SSH defaults. Omission provisions an owned CA.
 	// +kubebuilder:validation:XValidation:rule="self.renewBeforeSeconds < self.lifetimeSeconds",message="renewBeforeSeconds must be less than lifetimeSeconds"
@@ -68,6 +90,13 @@ type HermesSpec struct {
 	ConfigMap string `json:"configMap,omitempty"`
 	// CredentialsSecret selects the same-namespace dotenv credential file.
 	CredentialsSecret *corev1.SecretKeySelector `json:"credentialsSecret,omitempty"`
+	// Plugins is an optional plugins.json document. Omission or an empty list
+	// installs nothing. The controller only projects the document; the gateway
+	// init fetches pinned trees. Memory provider activation stays in spec.config.
+	// +kubebuilder:validation:MaxItems=32
+	// +listType=map
+	// +listMapKey=name
+	Plugins []PluginSource `json:"plugins,omitempty"`
 }
 
 // TerminalSpec selects a compatible image and workspace. SSH startup is controller-owned.
@@ -109,6 +138,13 @@ type HermesProfileSpec struct {
 	ConfigMap string `json:"configMap,omitempty"`
 	// CredentialsSecret selects the same-namespace dotenv credential file.
 	CredentialsSecret *corev1.SecretKeySelector `json:"credentialsSecret,omitempty"`
+	// Plugins is an optional plugins.json document. Omission or an empty list
+	// installs nothing. The controller only projects the document; the gateway
+	// init fetches pinned trees. Memory provider activation stays in spec.config.
+	// +kubebuilder:validation:MaxItems=32
+	// +listType=map
+	// +listMapKey=name
+	Plugins []PluginSource `json:"plugins,omitempty"`
 }
 
 type ResourceStatus struct {

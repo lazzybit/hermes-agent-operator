@@ -45,9 +45,29 @@ jobs:
           fi
           cat "$RUNNER_TEMP/ssh.log"
 
+  gateway-test:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    env:
+      CGO_ENABLED: '0'
+      GOFLAGS: -trimpath
+    defaults:
+      run:
+        working-directory: gateway
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.24.13'
+      - name: Install git
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends git
+      - run: go test ./...
+
   release:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-    needs: [go-test]
+    needs: [go-test, gateway-test]
     runs-on: ubuntu-24.04-arm
     outputs:
       tag: ${{ steps.version.outputs.tag }}
@@ -82,6 +102,9 @@ jobs:
           - image: hermes-agent-operator
             context: controller
             file: controller/Containerfile
+          - image: hermes-agent-gateway
+            context: gateway
+            file: gateway/Containerfile
           - image: hermes-agent-terminal
             context: terminal
             file: terminal/Containerfile
@@ -122,6 +145,9 @@ jobs:
           case "$COMPONENT" in
             hermes-agent-operator)
               docker run --rm "$IMAGE" --help
+              ;;
+            hermes-agent-gateway)
+              docker run --rm --entrypoint /usr/local/bin/hermes-gateway-init "$IMAGE" --help
               ;;
             hermes-agent-terminal)
               docker run --rm --entrypoint /tmp/ssh.test \

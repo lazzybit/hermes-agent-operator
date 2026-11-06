@@ -26,8 +26,8 @@ The manager requires `--namespace` or `WATCH_NAMESPACE`, limits its cache to tha
 
 Both resources use `hermes.nousresearch.com/v1alpha1`. Names are DNS labels limited to 40 characters to leave room for generated suffixes. See `config/samples/foundation.yaml` for neutral, non-operational examples; replace image references with tested images. Gateway commands are explicit. Terminal startup is controller-owned; legacy terminal.command is optional and ignored.
 
-- `Hermes.spec`: `image`, `command`, `storage`, optional `config` and `credentialsSecret`, optional `ssh` (advanced overrides; managed SSH is always active).
-- `HermesProfile.spec`: immutable same-namespace `hermesRef` (enforced by CRD transition validation), `storage`, `terminal.image`, `terminal.storage`, optional `config` and `credentialsSecret`.
+- `Hermes.spec`: `image`, `command`, `storage`, optional `config`, `credentialsSecret`, and `plugins`, optional `ssh` (advanced overrides; managed SSH is always active).
+- `HermesProfile.spec`: immutable same-namespace `hermesRef` (enforced by CRD transition validation), `storage`, `terminal.image`, `terminal.storage`, optional `config`, `credentialsSecret`, and `plugins`.
 - Each storage spec requires `size` (positive integer Mi/Gi/Ti), with optional `storageClassName`. `ephemeral: true` instead uses a Pod-local `emptyDir` and skips PVC creation; `size` remains required for API compatibility but is ignored in ephemeral mode, as is `storageClassName`. Set it independently for the instance home, profile home and terminal workspace. Data survives container restarts and is discarded on Pod replacement. Home init creates a private UID-owned child directory, mounted at the normal home path. Omitting `ephemeral` preserves retained storage. Switching modes never deletes existing claims; old retained data requires an explicit operator cleanup. Existing claims are not resized, replaced or deleted. Changes requiring migration produce a reconciliation error. An omitted class allows cluster defaulting. Each claim records the original request in `hermes.nousresearch.com/requested-storage-class`; `<omitted>` distinguishes omission from an explicit class, including an explicit empty string. Changing or removing an explicit class requires manual migration. Claims without this annotation require an operator to verify and record their original request before reuse; the controller cannot infer it from a defaulted claim.
 
 A Hermes creates `gateway-data` and `gateway`. The gateway has one replica, Recreate updates, HERMES_HOME=/var/lib/hermes/.hermes-home, and a mount of its home claim. Referencing profiles add sorted mounts of `profile-data-<profile>` at `/run/hermes-profiles/<profile>`. Profile create/update/delete events enqueue the namespace's instances, so profile deletion removes its gateway mount. The API rejects changes to a profile reference; selecting a different parent requires recreating the profile and explicitly planning data migration. Mount changes update the Pod template.
@@ -41,22 +41,47 @@ native SSH connection settings for SSH-enabled profiles. ConfigMap and credentia
 directories mount independently from writable runtime state; configuration links
 resolve to those projections. SOUL.md is neither required nor overwritten.
 
-Gateway and native initialization use the same `spec.image`, with official UID/GID
-10000 and fsGroup 10000. The initializer executes upstream `hermes profile create`
-in a temporary home on the claim, then publishes the newly created child home.
-It never creates a profile directly at a PVC mountpoint. Existing legacy homes
-remain at the claim root; new homes live in a UID-owned mode-0700 child. A stable
-`.hermes-home` link exposes either layout. Profile claims mount separately and
-link into the instance's profile directory. Existing nonempty parent directories
-that would conflict with these links require an explicit data migration.
-Terminal UID/GID stays 65532. All containers retain nonroot execution, dropped
+Gateway and init containers use the same `spec.image`, with official UID/GID
+10000 and fsGroup 10000. The published gateway image is official Hermes plus
+`/usr/local/bin/hermes-gateway-init`. The init container invokes that entry.
+The main container still runs `spec.command`, which starts the upstream gateway.
+A custom image may be selected, but if it does not implement this init entry
+the operator cannot provide home, config, credential, or plugin integration.
+Those steps are not generated in the controller. The init executes upstream
+`hermes profile create` in a temporary home on the claim, then publishes the
+newly created child home. It never creates a profile directly at a PVC
+mountpoint. Existing legacy homes remain at the claim root; new homes live in
+a UID-owned mode-0700 child. A stable `.hermes-home` link exposes either layout.
+Profile claims mount separately and link into the instance's profile directory.
+Existing nonempty parent directories that would conflict with these links
+require an explicit data migration. `SOUL.md` stays writable state.
+Terminal UID/GID stays 65532. Terminal Pods do not run this init and do not
+mount plugin projections. All containers retain nonroot execution, dropped
 capabilities, RuntimeDefault seccomp and `allowPrivilegeEscalation: false`.
 Existing root-owned hostPath data still requires compatible ownership; fsGroup
 alone cannot transfer ownership of old runtime files.
 
+Optional `spec.plugins` projects `plugins.json` for that home. A missing file
+or `[]` does nothing. Otherwise the init fetches each `repository` at the full
+40-character commit `revision` into an emptyDir at `/run/hermes-plugins/<profile>`
+(`default` for the instance home) and points `$HERMES_HOME/plugins` at it.
+`path` selects a subdirectory and cannot contain `..`. Fetched source is not
+written to the retained PVC or the ConfigMap. A pre-existing non-empty
+`plugins/` directory is not deleted; init fails and leaves it in place. A
+plugin `pyproject.toml` has its Python dependencies prepared into
+`/run/hermes-plugin-deps/<profile>` because the official image disables lazy
+installs. The gateway process puts those directories on `PYTHONPATH`. The init
+writes `sitecustomize.py` there so Python appends them after the sealed
+environment instead of letting them replace core modules. The init does not
+run the Hermes catalog or `hermes plugins install`.
+`memory.provider` stays in profile `spec.config`. The plugins document checksum
+rolls the gateway the same way configuration checksums do. Plugin fetch uses
+the gateway's existing public TCP 443 egress.
+
 Stable ConfigMap/Secret names support automatic rollouts. Referenced input watches
 enqueue only consuming instances. Deterministic public configuration checksums
-change on settings updates. Selected credential bytes are compared in memory;
+change on settings updates, including the projected `plugins.json` document.
+Selected credential bytes are compared in memory;
 random tokens trigger restart on content changes without publishing credential
 hashes or values. Metadata-only changes do not restart gateways. Controller
 restart resets this in-memory comparison and can cause one rollout. A Pod rollout
@@ -114,7 +139,7 @@ Generated OpenSSH certificate settings are consumed by the pinned native Hermes 
 
 The following are deliberately not exposed as speculative API settings:
 
-1. Exercise mounted-home initialization in Kubernetes with the selected official Hermes image, volume permissions and immutable Secret updates. Project tests check generated init commands and mounts.
+1. Exercise mounted-home initialization in Kubernetes with the gateway image, volume permissions and immutable Secret updates. Project tests check the init entry invocation and mounts.
 2. Establish multiplex discovery and verify served-profile and messaging health against a pinned Hermes version. Init success and local identity checks do not establish gateway readiness.
 3. Exercise the implemented SSH signing, projections, renewal rollouts and daemon authentication in Kubernetes. Generated strict OpenSSH configuration is not proof that the Hermes backend uses it.
 4. Use the pinned native Hermes SSH backend with standard OpenSSH certificate settings; see [packaging](packaging.md). Hermes retains its own file, sync, multiplexing and environment behavior. No controller SSH plugin or additional execution restrictions are installed.

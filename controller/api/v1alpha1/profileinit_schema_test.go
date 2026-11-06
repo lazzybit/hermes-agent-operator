@@ -18,7 +18,7 @@ func TestProfileInitializationRequiredSchema(t *testing.T) {
 			t.Fatal(err)
 		}
 		spec := crd.Spec.Versions[0].Schema.OpenAPIV3Schema.Properties["spec"]
-		fields := []string{"config", "configMap", "credentialsSecret"}
+		fields := []string{"config", "configMap", "credentialsSecret", "plugins"}
 		config := spec.Properties["config"]
 		if config.Type != "object" || config.XPreserveUnknownFields == nil || !*config.XPreserveUnknownFields {
 			t.Fatal("config must preserve arbitrary nested Hermes object fields")
@@ -37,9 +37,13 @@ func TestProfileInitializationRequiredSchema(t *testing.T) {
 			}
 		}
 		for _, required := range spec.Required {
-			if required == "helperImage" || required == "configSecret" {
-				t.Fatal("deprecated fields must be optional")
+			if required == "helperImage" || required == "configSecret" || required == "plugins" {
+				t.Fatal("deprecated or optional fields must stay optional")
 			}
+		}
+		plugins := spec.Properties["plugins"]
+		if plugins.Type != "array" || plugins.MaxItems == nil || *plugins.MaxItems != 32 {
+			t.Fatal("plugins must be an optional bounded array")
 		}
 	}
 }

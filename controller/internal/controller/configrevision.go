@@ -21,6 +21,30 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
+func pluginsDocument(plugins []api.PluginSource) ([]byte, error) {
+	if len(plugins) == 0 {
+		return nil, nil
+	}
+	seen := map[string]bool{}
+	for _, plugin := range plugins {
+		if plugin.Name == "" || seen[plugin.Name] {
+			return nil, fmt.Errorf("plugin name %q is missing or duplicated", plugin.Name)
+		}
+		seen[plugin.Name] = true
+		if len(plugin.Revision) != 40 {
+			return nil, fmt.Errorf("plugin %s revision must be a full commit SHA", plugin.Name)
+		}
+		if strings.Contains(plugin.Path, "..") || strings.HasPrefix(plugin.Path, "/") {
+			return nil, fmt.Errorf("plugin %s path must be a relative subdirectory without ..", plugin.Name)
+		}
+	}
+	data, err := json.MarshalIndent(plugins, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(data, '\n'), nil
+}
+
 func managedConfigName(owner client.Object) string {
 	if _, ok := owner.(*api.Hermes); ok {
 		return "gateway-config"
@@ -46,16 +70,17 @@ func (r *HermesReconciler) configurationRevision(ctx context.Context, h *api.Her
 		owner       client.Object
 		config      runtime.RawExtension
 		credentials *corev1.SecretKeySelector
+		plugins     []api.PluginSource
 		ssh         bool
 	}
 	// List results have no stable order; canonicalize a copy before building
 	// both configuration hashes and credential rollout tokens.
 	profiles = append([]api.HermesProfile(nil), profiles...)
 	sort.Slice(profiles, func(i, j int) bool { return profiles[i].Name < profiles[j].Name })
-	sources := []source{{h, h.Spec.Config, h.Spec.CredentialsSecret, false}}
+	sources := []source{{h, h.Spec.Config, h.Spec.CredentialsSecret, h.Spec.Plugins, false}}
 	for i := range profiles {
 		p := &profiles[i]
-		sources = append(sources, source{p, p.Spec.Config, p.Spec.CredentialsSecret, true})
+		sources = append(sources, source{p, p.Spec.Config, p.Spec.CredentialsSecret, p.Spec.Plugins, true})
 	}
 	var revisions, credentialTokens []string
 	for _, src := range sources {
@@ -97,10 +122,18 @@ func (r *HermesReconciler) configurationRevision(ctx context.Context, h *api.Her
 		if src.owner == h {
 			generated.Data["ssh_config"] = "Include /run/hermes-ssh/*/client_config\n"
 		}
+		plugins, err := pluginsDocument(src.plugins)
+		if err != nil {
+			return fmt.Errorf("%s spec.plugins: %w", src.owner.GetName(), err)
+		}
+		if len(plugins) > 0 {
+			// The document only. Fetched plugin bytes stay out of this ConfigMap.
+			generated.Data["plugins.json"] = string(plugins)
+		}
 		if err := apply(ctx, r.Client, r.Scheme, src.owner, generated); err != nil {
 			return err
 		}
-		revisions = append(revisions, fmt.Sprintf("%s:%x", generated.Name, sha256.Sum256(merged)))
+		revisions = append(revisions, fmt.Sprintf("%s:%x:%x", generated.Name, sha256.Sum256(merged), sha256.Sum256(plugins)))
 		if src.credentials != nil {
 			secret := &corev1.Secret{}
 			if err := r.Get(ctx, client.ObjectKey{Namespace: h.Namespace, Name: src.credentials.Name}, secret); err != nil {
