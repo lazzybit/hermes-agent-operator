@@ -101,3 +101,12 @@ home storage: these volumes can have different lifecycles. These instructions do
 not alter volume behavior or promise persistence for `emptyDir`. Storage changes
 also change generated configuration and its rollout revision. Existing sessions
 may retain cached prompt context until a fresh prompt is constructed.
+
+## File-tool write paths
+
+The gateway sets `HERMES_WRITE_SAFE_ROOT` to
+`/opt/data:/var/lib/hermes:/run/hermes-profiles:/workspace`. Hermes checks file
+paths in the gateway before issuing SSH operations, so the remote workspace
+must be allowed there, not only in the terminal environment. Local gateway and
+profile state paths remain allowed. Upstream sensitive-file guards still apply;
+this setting does not change volume mounts or filesystem permissions.

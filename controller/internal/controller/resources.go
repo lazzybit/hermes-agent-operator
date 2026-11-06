@@ -102,7 +102,13 @@ func Gateway(h *api.Hermes, profiles []api.HermesProfile) *appsv1.Deployment {
 	pod := &d.Spec.Template.Spec
 	uid := int64(10000)
 	pod.SecurityContext.RunAsUser, pod.SecurityContext.RunAsGroup, pod.SecurityContext.FSGroup = &uid, &uid, &uid
-	pod.Containers[0].Env = []corev1.EnvVar{{Name: "HERMES_HOME", Value: "/var/lib/hermes/.hermes-home"}, {Name: "HOME", Value: "/opt/data"}}
+	// File tools validate paths in the gateway before operating on the SSH backend.
+	// Preserve local home/state access while allowing the managed remote workspace.
+	pod.Containers[0].Env = []corev1.EnvVar{
+		{Name: "HERMES_HOME", Value: "/var/lib/hermes/.hermes-home"},
+		{Name: "HOME", Value: "/opt/data"},
+		{Name: "HERMES_WRITE_SAFE_ROOT", Value: "/opt/data:/var/lib/hermes:/run/hermes-profiles:/workspace"},
+	}
 	mount(d, "home", "gateway-data", "/var/lib/hermes", h.Spec.Storage)
 	pod.Containers[0].VolumeMounts[0].SubPath = ""
 	initializeHome(d, h.Spec.Image, "home", "gateway-config", h.Spec.CredentialsSecret, "")
