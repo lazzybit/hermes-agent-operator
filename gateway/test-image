@@ -1,0 +1,14 @@
+#!/bin/sh
+# Verify the gateway image follows the official launcher: a static .pth
+# points at /run/hermes/generated/plugin-deps, and hermes-plugin-path
+# materializes PYTHONPATH entries there.
+set -eu
+
+if [ -z "${IMAGE:-}" ]; then
+	echo "test-image: IMAGE is required" >&2
+	exit 64
+fi
+
+docker run --rm --entrypoint /usr/local/bin/hermes-gateway-init "$IMAGE" --help
+docker run --rm --entrypoint /bin/sh "$IMAGE" -c 'test -x /usr/local/bin/hermes-plugin-path && grep -q "unset PYTHONPATH PYTHONHOME" /opt/hermes/libexec/hermes && ! grep -q _hermes_extra_pythonpath /opt/hermes/libexec/hermes && site=$(/opt/hermes/.venv/bin/python -c "import sysconfig; print(sysconfig.get_path(\"purelib\"))") && grep -qx /run/hermes/generated/plugin-deps "$site/hermes-plugin-deps.pth"'
+docker run --rm --user 10000:10000 --tmpfs /run/hermes/generated:uid=10000,gid=10000,mode=0755 --entrypoint /bin/sh "$IMAGE" -c 'mkdir -p /tmp/fake-plugin-deps/demo_pkg && touch /tmp/fake-plugin-deps/demo_pkg/__init__.py && export PYTHONPATH=/tmp/fake-plugin-deps && /usr/local/bin/hermes-plugin-path /bin/sh -c "test -e /run/hermes/generated/plugin-deps/demo_pkg"'

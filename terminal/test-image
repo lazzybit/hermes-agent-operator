@@ -1,0 +1,19 @@
+#!/bin/sh
+# Run the OpenSSH packaging check inside the terminal image.
+set -eu
+
+if [ -z "${IMAGE:-}" ]; then
+	echo "test-image: IMAGE is required" >&2
+	exit 64
+fi
+
+root=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+ssh_test=${SSH_TEST:-${RUNNER_TEMP:-/tmp}/ssh.test}
+if [ ! -x "$ssh_test" ]; then
+	(cd "$root/controller" && CGO_ENABLED=0 go test -c -o "$ssh_test" ./internal/ssh)
+fi
+
+docker run --rm --entrypoint /tmp/ssh.test \
+	--env HERMES_SSH_INTEGRATION=1 --env HERMES_IMAGE_TEST=1 --env SSHD=/usr/sbin/sshd --env TMPDIR=/home/agent \
+	--mount "type=bind,src=$ssh_test,dst=/tmp/ssh.test,readonly" \
+	"$IMAGE" -test.run TestOpenSSH -test.v

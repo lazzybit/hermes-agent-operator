@@ -116,10 +116,6 @@ jobs:
         with:
           go-version: '1.24.13'
           cache-dependency-path: controller/go.sum
-      - name: Compile SSH packaging check
-        if: matrix.image == 'hermes-agent-terminal'
-        working-directory: controller
-        run: CGO_ENABLED=0 go test -c -o "$RUNNER_TEMP/ssh.test" ./internal/ssh
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Build candidate once
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
@@ -138,26 +134,7 @@ jobs:
       - name: Test candidate image
         env:
           IMAGE: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ needs.release.outputs.tag }}
-          COMPONENT: ${{ matrix.image }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          case "$COMPONENT" in
-            hermes-agent-controller)
-              docker run --rm "$IMAGE" --help
-              ;;
-            hermes-agent-gateway)
-              docker run --rm --entrypoint /usr/local/bin/hermes-gateway-init "$IMAGE" --help
-              docker run --rm --entrypoint /bin/sh "$IMAGE" -c 'test -x /usr/local/bin/hermes-plugin-path && grep -q "unset PYTHONPATH PYTHONHOME" /opt/hermes/libexec/hermes && ! grep -q _hermes_extra_pythonpath /opt/hermes/libexec/hermes && site=$(/opt/hermes/.venv/bin/python -c "import sysconfig; print(sysconfig.get_path(\"purelib\"))") && grep -qx /run/hermes/generated/plugin-deps "$site/hermes-plugin-deps.pth"'
-              docker run --rm --user 10000:10000 --tmpfs /run/hermes/generated:uid=10000,gid=10000,mode=0755 --entrypoint /bin/sh "$IMAGE" -c 'mkdir -p /tmp/fake-plugin-deps/demo_pkg && touch /tmp/fake-plugin-deps/demo_pkg/__init__.py && export PYTHONPATH=/tmp/fake-plugin-deps && /usr/local/bin/hermes-plugin-path /bin/sh -c "test -e /run/hermes/generated/plugin-deps/demo_pkg"'
-              ;;
-            hermes-agent-terminal)
-              docker run --rm --entrypoint /tmp/ssh.test \
-                --env HERMES_SSH_INTEGRATION=1 --env HERMES_IMAGE_TEST=1 --env SSHD=/usr/sbin/sshd --env TMPDIR=/home/agent \
-                --mount "type=bind,src=$RUNNER_TEMP/ssh.test,dst=/tmp/ssh.test,readonly" \
-                "$IMAGE" -test.run TestOpenSSH -test.v
-              ;;
-          esac
+        run: ${{ matrix.context }}/test-image
       - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io

@@ -1,0 +1,10 @@
+#!/bin/sh
+# Smoke-test the controller image entrypoint.
+set -eu
+
+if [ -z "${IMAGE:-}" ]; then
+	echo "test-image: IMAGE is required" >&2
+	exit 64
+fi
+
+docker run --rm "$IMAGE" --help
