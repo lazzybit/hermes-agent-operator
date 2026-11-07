@@ -1,7 +1,9 @@
 # Official Hermes agent plus /usr/local/bin/hermes-gateway-init.
-# The upstream Docker entrypoint is unchanged. The official hermes launcher
-# would replace PYTHONPATH; this image preserves operator-injected plugin
-# dependency directories on that variable. Kubernetes overrides the gateway
+# The upstream Docker entrypoint and hermes launcher are unchanged.
+# Official startup unsets PYTHONPATH and loads extra paths only via
+# site.addsitedir(HERMES_SITE), so this image ships a writable .pth in
+# site-packages and /usr/local/bin/hermes-plugin-path to fill it before
+# exec'ing the official hermes command. Kubernetes overrides the gateway
 # container command and invokes the init entry only from the init container.
 # A custom image that does not provide this entry cannot perform home,
 # config, credential, or plugin integration.
@@ -14,8 +16,9 @@ RUN CGO_ENABLED=0 go build -trimpath -o /hermes-gateway-init .
 FROM nousresearch/hermes-agent:v0.22.7@sha256:e6d81ae52ebf6a43efa529701405509f20054ba818f179ddd748bed4f8af584c
 USER root
 COPY --from=builder /hermes-gateway-init /usr/local/bin/hermes-gateway-init
-COPY preserve-pythonpath.sh /tmp/preserve-pythonpath.sh
-RUN chmod 0755 /usr/local/bin/hermes-gateway-init /tmp/preserve-pythonpath.sh \
- && /tmp/preserve-pythonpath.sh /opt/hermes/libexec/hermes \
- && rm /tmp/preserve-pythonpath.sh
+COPY hermes-plugin-path /usr/local/bin/hermes-plugin-path
+RUN chmod 0755 /usr/local/bin/hermes-gateway-init /usr/local/bin/hermes-plugin-path \
+ && site="$(/opt/hermes/.venv/bin/python -c 'import sysconfig; print(sysconfig.get_path("purelib"))')" \
+ && touch "$site/hermes-plugin-deps.pth" \
+ && chown 10000:10000 "$site/hermes-plugin-deps.pth"
 USER 10000:10000

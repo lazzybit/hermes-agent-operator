@@ -73,8 +73,10 @@ written to the retained PVC or the ConfigMap. A pre-existing non-empty
 plugin `pyproject.toml` has its Python dependencies prepared into
 `/run/hermes-plugin-deps/<profile>` because the official image disables lazy
 installs. The gateway process puts those directories on `PYTHONPATH`. The official
-Hermes launcher would otherwise replace that variable; the gateway image
-keeps the injected directories on it. The init
+Hermes launcher unsets that variable and loads extra paths only through
+`site.addsitedir(HERMES_SITE)`, so the container command runs
+`hermes-plugin-path` first to write those directories into a `.pth` file
+in site-packages, then execs the official `hermes`. The init
 writes `sitecustomize.py` there so Python appends them after the sealed
 environment instead of letting them replace core modules. The init does not
 run the Hermes catalog or `hermes plugins install`.

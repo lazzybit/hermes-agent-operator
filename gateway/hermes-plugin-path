@@ -1,0 +1,29 @@
+#!/bin/sh
+# Project operator-injected plugin dependency directories into a .pth
+# file under the sealed Hermes site-packages, then exec the official
+# launcher. That launcher unsets PYTHONPATH and loads extra paths only
+# through site.addsitedir(HERMES_SITE), which reads .pth files.
+set -eu
+
+if [ "$#" -eq 0 ]; then
+	echo "hermes-plugin-path: missing command" >&2
+	exit 64
+fi
+
+python="${HERMES_PYTHON:-/opt/hermes/.venv/bin/python}"
+site="$("$python" -c "import sysconfig; print(sysconfig.get_path('purelib'))")"
+pth="$site/hermes-plugin-deps.pth"
+tmp="$pth.tmp"
+
+"$python" - "$tmp" << 'PY'
+import os, sys
+
+path = sys.argv[1]
+parts = [item for item in os.environ.get("PYTHONPATH", "").split(os.pathsep) if item]
+with open(path, "w", encoding="utf-8") as handle:
+    if parts:
+        handle.write("\n".join(parts) + "\n")
+PY
+
+mv "$tmp" "$pth"
+exec "$@"
