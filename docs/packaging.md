@@ -56,8 +56,14 @@ The published names are `ghcr.io/lazzybit/hermes-agent-controller`,
 `ghcr.io/lazzybit/hermes-agent-terminal`. The gateway image starts from the
 pinned official `nousresearch/hermes-agent:v0.22.7` image
 (`sha256:e6d81ae52ebf6a43efa529701405509f20054ba818f179ddd748bed4f8af584c`).
-This project does not rebuild the upstream Hermes runtime. See
-[terminal compatibility](terminal.md) and the gateway contract below.
+This project does not rebuild the upstream Hermes runtime. It applies
+`gateway/patches/ssh-media-session.patch` with `git apply --check` during the image
+build. This restores the producing session route while fetching SSH attachments
+after the agent handler clears its context; empty route callers retain their
+existing context. Candidate image tests exercise route isolation, context cleanup
+and strict-policy refusal. Remove the patch once the pinned upstream includes
+the equivalent fix; upstream drift deliberately fails the build.
+See [terminal compatibility](terminal.md) and the gateway contract below.
 
 ## Gateway image and init contract
 

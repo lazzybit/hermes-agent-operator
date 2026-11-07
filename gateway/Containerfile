@@ -16,6 +16,11 @@ RUN CGO_ENABLED=0 go build -trimpath -o /hermes-gateway-init .
 
 FROM nousresearch/hermes-agent:v0.22.7@sha256:e6d81ae52ebf6a43efa529701405509f20054ba818f179ddd748bed4f8af584c
 USER root
+COPY patches/ssh-media-session.patch /tmp/ssh-media-session.patch
+RUN cd /opt/hermes \
+ && git apply --check /tmp/ssh-media-session.patch \
+ && git apply /tmp/ssh-media-session.patch \
+ && rm /tmp/ssh-media-session.patch
 COPY --from=builder /hermes-gateway-init /usr/local/bin/hermes-gateway-init
 COPY hermes-plugin-path /usr/local/bin/hermes-plugin-path
 RUN chmod 0755 /usr/local/bin/hermes-gateway-init /usr/local/bin/hermes-plugin-path \

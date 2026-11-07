@@ -1,0 +1,17 @@
+diff --git a/gateway/platforms/base.py b/gateway/platforms/base.py
+index 5de9ec41..3d853c8c 100644
+--- a/gateway/platforms/base.py
++++ b/gateway/platforms/base.py
+@@ -1111,7 +1111,11 @@ def _validated_delivery_path(raw_path, session_key: str, label: str,
+     safe_path = validate_media_delivery_path(raw, session_key=session_key)
+     if not safe_path:
+         from gateway.media_fetch import fetch_remote_media
+-        safe_path = fetch_remote_media(raw)
++        from gateway.session_context import scoped_session_key
++        # Delivery runs after the handler cleared its session ContextVars. Restore
++        # the explicit producing route for sandbox lookup, never a process-global id.
++        with scoped_session_key(session_key) if session_key else contextlib.nullcontext():
++            safe_path = fetch_remote_media(raw)
+     if not safe_path:
+         # Say WHY: a path that does not exist on the host is the common case (a model hallucinated or
+         # a sandbox path failed to translate) and is not a security rejection.
