@@ -15,7 +15,7 @@ spec:
       serviceAccountName: hermes-agent-controller
       containers:
         - name: manager
-          image: ghcr.io/lazzybit/hermes-agent-operator:canary
+          image: ghcr.io/lazzybit/hermes-agent-controller:canary
           imagePullPolicy: IfNotPresent
           env:
             - name: WATCH_NAMESPACE

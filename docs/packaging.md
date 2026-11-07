@@ -46,12 +46,12 @@ require a Go module at the repository root. Alternatively use `kubectl kustomize
 From the repository root:
 
 ```sh
-docker build -f controller/Containerfile -t hermes-agent-operator:dev controller
+docker build -f controller/Containerfile -t hermes-agent-controller:dev controller
 docker build -f gateway/Containerfile -t hermes-agent-gateway:dev gateway
 docker build -f terminal/Containerfile -t hermes-agent-terminal:dev terminal
 ```
 
-The published names are `ghcr.io/lazzybit/hermes-agent-operator`,
+The published names are `ghcr.io/lazzybit/hermes-agent-controller`,
 `ghcr.io/lazzybit/hermes-agent-gateway`, and
 `ghcr.io/lazzybit/hermes-agent-terminal`. The gateway image starts from the
 pinned official `nousresearch/hermes-agent:v0.22.7` image
