@@ -54,8 +54,8 @@ docker build -f terminal/Containerfile -t hermes-agent-terminal:dev terminal
 The published names are `ghcr.io/lazzybit/hermes-agent-controller`,
 `ghcr.io/lazzybit/hermes-agent-gateway`, and
 `ghcr.io/lazzybit/hermes-agent-terminal`. The gateway image starts from the
-pinned official `nousresearch/hermes-agent:v0.22.7` image
-(`sha256:e6d81ae52ebf6a43efa529701405509f20054ba818f179ddd748bed4f8af584c`).
+pinned official `nousresearch/hermes-agent:v0.23.0` image
+(`sha256:adb7890916de63245523492be8f68f9d2095fecbec4e2a6dab7960381f0fc002`).
 This project does not rebuild the upstream Hermes runtime. It applies
 `gateway/patches/ssh-media-session.patch` with `git apply --check` during the image
 build. This restores the producing session route while fetching SSH attachments
