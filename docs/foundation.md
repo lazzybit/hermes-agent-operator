@@ -74,9 +74,10 @@ plugin `pyproject.toml` has its Python dependencies prepared into
 `/run/hermes-plugin-deps/<profile>` because the official image disables lazy
 installs. The gateway process puts those directories on `PYTHONPATH`. The official
 Hermes launcher unsets that variable and loads extra paths only through
-`site.addsitedir(HERMES_SITE)`, so the container command runs
-`hermes-plugin-path` first to write those directories into a `.pth` file
-in site-packages, then execs the official `hermes`. The init
+`site.addsitedir(HERMES_SITE)`, so the image ships a static `.pth` that
+points at `/run/hermes/generated/plugin-deps`. The container command runs
+`hermes-plugin-path` first to materialize those directories there, then
+execs the official `hermes`. The init
 writes `sitecustomize.py` there so Python appends them after the sealed
 environment instead of letting them replace core modules. The init does not
 run the Hermes catalog or `hermes plugins install`.

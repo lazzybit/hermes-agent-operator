@@ -114,9 +114,10 @@ runtime venv has no `pip` module, so the init does not run `python -m pip`,
 mounting the files alone does not make those imports available. The gateway
 process sets `PYTHONPATH` to each dependency directory. The official Hermes
 launcher unsets that variable and loads extra paths only through
-`site.addsitedir(HERMES_SITE)`, so the container command runs
-`/usr/local/bin/hermes-plugin-path` first to write those directories into a
-`.pth` file in the sealed site-packages, then execs the official `hermes`.
+`site.addsitedir(HERMES_SITE)`, so the image ships a static `.pth` that
+points at `/run/hermes/generated/plugin-deps`. The container command runs
+`/usr/local/bin/hermes-plugin-path` first to materialize those directories
+there, then execs the official `hermes`.
 A `sitecustomize.py`
 written there moves those directories behind the sealed environment on
 `sys.path`, so an already installed core package stays ahead of a plugin

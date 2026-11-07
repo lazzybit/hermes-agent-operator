@@ -1,12 +1,9 @@
 #!/bin/sh
-# Project operator-injected plugin dependency directories into a .pth
-# file under the sealed Hermes site-packages, then exec the official
-# launcher. That launcher unsets PYTHONPATH and loads extra paths only
-# through site.addsitedir(HERMES_SITE), which reads .pth files.
-#
-# The .pth file itself is created at image build time and owned by
-# uid 10000. The site-packages directory is not writable, so this
-# writes the existing file in place instead of creating a sibling.
+# Materialize operator-injected plugin dependency directories under
+# /run/hermes/generated/plugin-deps, then exec the official launcher.
+# That launcher unsets PYTHONPATH and loads extra paths only through
+# site.addsitedir(HERMES_SITE), which reads the image's static .pth
+# pointing at this generated directory.
 set -eu
 
 if [ "$#" -eq 0 ]; then
@@ -14,18 +11,33 @@ if [ "$#" -eq 0 ]; then
 	exit 64
 fi
 
+dest=/run/hermes/generated/plugin-deps
 python="${HERMES_PYTHON:-/opt/hermes/.venv/bin/python}"
-site="$("$python" -c "import sysconfig; print(sysconfig.get_path('purelib'))")"
-pth="$site/hermes-plugin-deps.pth"
 
-"$python" - "$pth" << 'PY'
-import os, sys
+"$python" - "$dest" << 'PY'
+import os
+import pathlib
+import sys
 
-path = sys.argv[1]
-parts = [item for item in os.environ.get("PYTHONPATH", "").split(os.pathsep) if item]
-with open(path, "w", encoding="utf-8") as handle:
-    if parts:
-        handle.write("\n".join(parts) + "\n")
+dest = pathlib.Path(sys.argv[1])
+dest.mkdir(parents=True, exist_ok=True)
+for child in dest.iterdir():
+    if child.is_symlink() or child.is_file():
+        child.unlink()
+
+skip = {"sitecustomize.py", "__pycache__"}
+for part in os.environ.get("PYTHONPATH", "").split(os.pathsep):
+    if not part:
+        continue
+    src = pathlib.Path(part)
+    if not src.is_dir():
+        continue
+    for item in src.iterdir():
+        if item.name in skip or item.suffix == ".pth":
+            continue
+        target = dest / item.name
+        if not target.exists():
+            target.symlink_to(item)
 PY
 
 exec "$@"
