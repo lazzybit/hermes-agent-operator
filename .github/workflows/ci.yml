@@ -167,35 +167,3 @@ jobs:
         env:
           IMAGE: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ needs.release.outputs.tag }}
         run: docker push "$IMAGE"
-      - name: Delete untagged package versions
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          OWNER: ${{ github.repository_owner }}
-          PACKAGE: ${{ matrix.image }}
-        run: |
-          set -euo pipefail
-          prune() {
-            local package="$1"
-            if ! gh api -H "Accept: application/vnd.github+json" \
-              "/users/${OWNER}/packages/container/${package}/versions?per_page=1" >/dev/null; then
-              echo "skip ${package}: not found" >&2
-              return 0
-            fi
-            while true; do
-              mapfile -t ids < <(gh api -H "Accept: application/vnd.github+json" \
-                "/users/${OWNER}/packages/container/${package}/versions?per_page=100" \
-                | jq -r '.[] | select((.metadata.container.tags // []) | length == 0) | .id')
-              if [[ "${#ids[@]}" -eq 0 ]]; then
-                break
-              fi
-              local id
-              for id in "${ids[@]}"; do
-                gh api --method DELETE "/users/${OWNER}/packages/container/${package}/versions/${id}"
-                echo "deleted untagged ${package} version ${id}"
-              done
-            done
-          }
-          prune "$PACKAGE"
-          if [[ "$PACKAGE" == hermes-agent-controller ]]; then
-            prune hermes-agent-operator
-          fi
