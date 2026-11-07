@@ -3,6 +3,10 @@
 # file under the sealed Hermes site-packages, then exec the official
 # launcher. That launcher unsets PYTHONPATH and loads extra paths only
 # through site.addsitedir(HERMES_SITE), which reads .pth files.
+#
+# The .pth file itself is created at image build time and owned by
+# uid 10000. The site-packages directory is not writable, so this
+# writes the existing file in place instead of creating a sibling.
 set -eu
 
 if [ "$#" -eq 0 ]; then
@@ -13,9 +17,8 @@ fi
 python="${HERMES_PYTHON:-/opt/hermes/.venv/bin/python}"
 site="$("$python" -c "import sysconfig; print(sysconfig.get_path('purelib'))")"
 pth="$site/hermes-plugin-deps.pth"
-tmp="$pth.tmp"
 
-"$python" - "$tmp" << 'PY'
+"$python" - "$pth" << 'PY'
 import os, sys
 
 path = sys.argv[1]
@@ -25,5 +28,4 @@ with open(path, "w", encoding="utf-8") as handle:
         handle.write("\n".join(parts) + "\n")
 PY
 
-mv "$tmp" "$pth"
 exec "$@"

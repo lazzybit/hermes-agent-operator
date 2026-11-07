@@ -149,6 +149,7 @@ jobs:
             hermes-agent-gateway)
               docker run --rm --entrypoint /usr/local/bin/hermes-gateway-init "$IMAGE" --help
               docker run --rm --entrypoint /bin/sh "$IMAGE" -c 'test -x /usr/local/bin/hermes-plugin-path && grep -q "unset PYTHONPATH PYTHONHOME" /opt/hermes/libexec/hermes && ! grep -q _hermes_extra_pythonpath /opt/hermes/libexec/hermes && site=$(/opt/hermes/.venv/bin/python -c "import sysconfig; print(sysconfig.get_path(\"purelib\"))") && test -f "$site/hermes-plugin-deps.pth"'
+              docker run --rm --user 10000:10000 --entrypoint /bin/sh "$IMAGE" -c 'export PYTHONPATH=/tmp/fake-plugin-deps && /usr/local/bin/hermes-plugin-path /bin/sh -c "site=\$(/opt/hermes/.venv/bin/python -c \"import sysconfig; print(sysconfig.get_path(\\\"purelib\\\"))\") && grep -qx /tmp/fake-plugin-deps \"\$site/hermes-plugin-deps.pth\""'
               ;;
             hermes-agent-terminal)
               docker run --rm --entrypoint /tmp/ssh.test \
