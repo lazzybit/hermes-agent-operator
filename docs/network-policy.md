@@ -1,25 +1,25 @@
 # Default NetworkPolicies
 
-Every Hermes and HermesProfile receives a namespaced `networking.k8s.io/v1` NetworkPolicy. No new API fields or opt-in are required: the foundation API has no network configuration, and these boundaries are default behavior regardless of `spec.ssh`. This is an intentional change for existing instances: reconciliation installs policies and adds instance identity to Pod templates, causing a rollout. Deployment and Service selectors remain unchanged. Inventory required connections before upgrading; private providers, HTTP endpoints, non-443 messaging and direct external SSH will be blocked.
+Every Hermes and HermesProfile receives a namespaced `networking.k8s.io/v1` NetworkPolicy. No new API fields or opt-in are required: the foundation API has no network configuration, and these boundaries are default behavior regardless of `spec.ssh`. This is an intentional change for existing instances: reconciliation installs policies and adds instance identity to Pod templates, causing a rollout. Deployment and Service selectors remain unchanged. Terminal egress is unrestricted to support development tools and arbitrary protocols. Gateway egress remains restricted; private providers, HTTP endpoints and non-443 messaging require administrator-managed gateway policies.
 
 | Workload / direction | Allowed new connections |
 | --- | --- |
 | Gateway egress | TCP 2222 to terminal Pods of the same instance and namespace; DNS below; public TCP 443 below |
 | Terminal ingress | TCP 2222 from gateway Pods of the same instance and namespace only |
-| Terminal egress | DNS below; public TCP 443 below |
+| Terminal egress | All destinations, ports and protocols, including private networks |
 | Gateway ingress | Unmanaged by this controller |
 
-All other new connections in the isolated directions are denied by these policies. Established connection replies are implicitly permitted by Kubernetes NetworkPolicy semantics; terminal SSH replies do not need gateway egress or terminal egress exceptions. Terminals cannot initiate connections to other terminals, gateways or private Kubernetes API endpoints. There is no unrestricted port-22 rule and no external all-ports rule. The shared gateway may reach all its instance's terminals; NetworkPolicy cannot distinguish profiles inside one gateway process. SSH principal authorization remains necessary.
+All other new gateway egress and terminal ingress connections are denied by these policies. Established connection replies are implicitly permitted by Kubernetes NetworkPolicy semantics. Terminal policies explicitly contain `egress: [{}]`, allowing all outbound traffic even when other additive egress policies select the same Pod. Destination ingress policies, authentication and authorization still apply. Terminal tools can initiate SSH, HTTP, UDP and private-network connections; no terminal destination or port allow list is imposed. The shared gateway may reach all its instance's terminals; NetworkPolicy cannot distinguish profiles inside one gateway process. SSH principal authorization remains necessary.
 
 ## Selectors and DNS
 
 Policies select exact generated workloads using the existing managed-by, component and resource labels. SSH peers require managed-by, component and `hermes.nousresearch.com/instance` labels together. A peer containing only a Pod selector is namespace-local; no namespace wildcard is added. Instance labels are placed on Pod templates, without modifying immutable Deployment selectors.
 
-DNS permits UDP 53 and TCP 53 only to Pods labeled `k8s-app=kube-dns` in the namespace labeled `kubernetes.io/metadata.name=kube-system`. Both selectors are in **one peer** (AND), rather than separate peers (OR). This matches common CoreDNS installations. Custom DNS labels, external DNS, NodeLocal DNSCache and host-network DNS are not automatically supported. Verify Service destination translation and selector behavior with the actual CNI; adapt infrastructure DNS or separately reviewed policies if needed. No unrestricted DNS IP exception is installed.
+Gateway DNS permits UDP 53 and TCP 53 only to Pods labeled `k8s-app=kube-dns` in the namespace labeled `kubernetes.io/metadata.name=kube-system`. Both selectors are in **one peer** (AND), rather than separate peers (OR). This matches common CoreDNS installations. Custom DNS labels, external DNS, NodeLocal DNSCache and host-network DNS are not automatically supported. Verify Service destination translation and selector behavior with the actual CNI; adapt infrastructure DNS or separately reviewed policies if needed. No unrestricted DNS IP exception is installed.
 
 ## Public HTTPS address boundaries
 
-External egress permits **TCP 443 only**, with these IP blocks:
+Gateway external egress permits **TCP 443 only**, with these IP blocks:
 
 - IPv4 `0.0.0.0/0`, excluding `0.0.0.0/8`, `10.0.0.0/8`, `100.64.0.0/10`, `127.0.0.0/8`, `169.254.0.0/16`, `172.16.0.0/12`, `192.0.0.0/24`, `192.0.2.0/24`, `192.168.0.0/16`, `198.18.0.0/15`, `198.51.100.0/24`, `203.0.113.0/24`, `224.0.0.0/4`, and `240.0.0.0/4`.
 - IPv6 global unicast `2000::/3`, excluding special-use `2001::/23`, documentation `2001:db8::/32` and `3fff::/20`, and 6to4 `2002::/16`. This does not allow ULA `fc00::/7`, link-local `fe80::/10`, multicast, loopback, IPv4-mapped addresses or NAT64 ranges outside that block. Some special-use globally routable services are deliberately excluded.
@@ -27,6 +27,8 @@ External egress permits **TCP 443 only**, with these IP blocks:
 These rules filter addresses and ports, not TLS, hostnames or application identity. Public proxies, tunnels and DNS exfiltration remain possible. Public-addressed cluster Pods, Services, nodes or API servers can match public TCP 443; address-only portable NetworkPolicy cannot distinguish those from public providers. This implementation assumes internal workload/API addresses use excluded private ranges. Clusters using public internal CIDRs require additional CNI-specific deny controls before claiming equivalent isolation. Special-use address allocations can change; the static exclusions are not a live IANA registry.
 
 ## Reconciliation and operational limits
+
+Upgrading from the previous restrictive terminal policy replaces its DNS/public-443 rules with one unrestricted egress rule during reconciliation; this policy-only change does not require a workload restart. Gateway egress and terminal ingress remain unchanged.
 
 Policies are named `gateway` and `terminal-<profile>`, owned by their respective CR with `blockOwnerDeletion=false`. Reconciliation installs the policy before creating/updating its workload, repairs policy spec drift and recreation after deletion, and rejects unowned or differently owned name collisions. Both controllers watch their owned policies. Profile policies continue reconciling when the parent is absent or deleting. The namespace Role grants policy get/list/watch/create/patch/update/delete, including cleanup of obsolete controller-owned policies after a rename. No cluster policy privileges are added.
 

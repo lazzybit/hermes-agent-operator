@@ -33,7 +33,7 @@ func TestNetworkInstancePodLabelsPreserveWorkloadSelectors(t *testing.T) {
 	}
 }
 
-func TestNetworkPoliciesConstrainPeersAndPorts(t *testing.T) {
+func TestNetworkPoliciesPreserveSSHIngressAndGatewayEgress(t *testing.T) {
 	h := &api.Hermes{ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "test"}}
 	p := &api.HermesProfile{ObjectMeta: metav1.ObjectMeta{Name: "alpha", Namespace: "test"}, Spec: api.HermesProfileSpec{HermesRef: "demo"}}
 	g, term := GatewayNetworkPolicy(h), TerminalNetworkPolicy(p)
@@ -60,9 +60,9 @@ func TestNetworkPoliciesConstrainPeersAndPorts(t *testing.T) {
 		t.Fatal("gateway management ingress must remain unmanaged")
 	}
 	if !reflect.DeepEqual(term.Spec.PolicyTypes, []networkingv1.PolicyType{networkingv1.PolicyTypeIngress, networkingv1.PolicyTypeEgress}) {
-		t.Fatal("terminal must isolate both directions")
+		t.Fatal("terminal policy must declare ingress and egress")
 	}
-	if len(g.Spec.Egress) != 3 || len(term.Spec.Egress) != 2 || len(term.Spec.Ingress) != 1 {
+	if len(g.Spec.Egress) != 3 || len(term.Spec.Egress) != 1 || len(term.Spec.Ingress) != 1 {
 		t.Fatal("unexpected allow rules")
 	}
 	checkPort := func(ports []networkingv1.NetworkPolicyPort, protocol corev1.Protocol, port int32) {
@@ -97,7 +97,10 @@ func TestNetworkPoliciesConstrainPeersAndPorts(t *testing.T) {
 			}
 		}
 	}
-	for _, rules := range [][]networkingv1.NetworkPolicyEgressRule{g.Spec.Egress[1:], term.Spec.Egress} {
+	if !reflect.DeepEqual(term.Spec.Egress, []networkingv1.NetworkPolicyEgressRule{{}}) {
+		t.Fatal("terminal egress must allow all destinations, ports, and protocols")
+	}
+	for _, rules := range [][]networkingv1.NetworkPolicyEgressRule{g.Spec.Egress[1:]} {
 		dns := rules[0]
 		if len(dns.To) != 1 || dns.To[0].IPBlock != nil || dns.To[0].NamespaceSelector == nil || dns.To[0].PodSelector == nil {
 			t.Fatal("DNS namespace and Pod selectors must be ANDed in one peer")
@@ -212,6 +215,10 @@ func TestReconcileNetworkPolicies(t *testing.T) {
 					t.Fatal("stable reconciliation rewrote policy")
 				}
 				got.Spec.Egress = []networkingv1.NetworkPolicyEgressRule{{}}
+				if kind == "terminal" {
+					// Simulate upgrading the old DNS/public-HTTPS terminal policy.
+					got.Spec.Egress = internetEgress()
+				}
 				if err := c.Update(ctx, got); err != nil {
 					t.Fatal(err)
 				}

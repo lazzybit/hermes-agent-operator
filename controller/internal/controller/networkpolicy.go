@@ -58,6 +58,6 @@ func TerminalNetworkPolicy(p *api.HermesProfile) *networkingv1.NetworkPolicy {
 		PodSelector: metav1.LabelSelector{MatchLabels: labels(name, "terminal")},
 		PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress, networkingv1.PolicyTypeEgress},
 		Ingress:     []networkingv1.NetworkPolicyIngressRule{{From: []networkingv1.NetworkPolicyPeer{instancePeer(p.Spec.HermesRef, "gateway")}, Ports: []networkingv1.NetworkPolicyPort{networkPort(corev1.ProtocolTCP, 2222)}}},
-		Egress:      internetEgress(),
+		Egress:      []networkingv1.NetworkPolicyEgressRule{{}},
 	}}
 }

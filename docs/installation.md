@@ -7,7 +7,8 @@ resource reconciliation does not establish application readiness.
 
 - A Kubernetes cluster with a compatible storage class and ingress/egress
   NetworkPolicy enforcement. Review [network requirements](network-policy.md),
-  including the expected CoreDNS labels and public TCP 443 egress restrictions.
+  including the gateway CoreDNS labels and public TCP 443 egress restrictions,
+  and unrestricted terminal egress.
 - Cluster privileges for CRD installation and administration of a dedicated
   namespace. Runtime controller access is namespaced, including Secret access.
 - Tested, preferably digest-pinned controller, gateway, and SSH terminal images.
