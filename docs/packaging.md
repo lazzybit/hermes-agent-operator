@@ -112,7 +112,9 @@ emptyDir with the `uv` binary shipped in the Hermes image. The sealed
 runtime venv has no `pip` module, so the init does not run `python -m pip`,
 `hermes plugins`, or the catalog. Official images disable lazy installs, so
 mounting the files alone does not make those imports available. The gateway
-process sets `PYTHONPATH` to each dependency directory. A `sitecustomize.py`
+process sets `PYTHONPATH` to each dependency directory. The official Hermes
+launcher would otherwise replace that variable; the gateway image keeps the
+injected directories on it. A `sitecustomize.py`
 written there moves those directories behind the sealed environment on
 `sys.path`, so an already installed core package stays ahead of a plugin
 dependency of the same name. Setting `memory.provider` remains

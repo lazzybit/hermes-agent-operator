@@ -148,6 +148,7 @@ jobs:
               ;;
             hermes-agent-gateway)
               docker run --rm --entrypoint /usr/local/bin/hermes-gateway-init "$IMAGE" --help
+              docker run --rm --entrypoint /bin/sh "$IMAGE" -c 'grep -q _hermes_extra_pythonpath /opt/hermes/libexec/hermes'
               ;;
             hermes-agent-terminal)
               docker run --rm --entrypoint /tmp/ssh.test \
