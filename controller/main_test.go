@@ -6,6 +6,16 @@ import (
 	"testing"
 )
 
+func TestServiceAccountReadsDoNotRequireInformer(t *testing.T) {
+	opts := namespaceOptions("test")
+	for _, obj := range opts.Client.Cache.DisableFor {
+		if _, ok := obj.(*corev1.ServiceAccount); ok {
+			return
+		}
+	}
+	t.Fatal("unwatched ServiceAccount reads must bypass cache when missing informers are rejected")
+}
+
 func TestSecretsBypassManagerCache(t *testing.T) {
 	opts := namespaceOptions("test")
 	found := false

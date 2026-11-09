@@ -22,7 +22,7 @@ import (
 func namespaceOptions(namespace string) ctrl.Options {
 	return ctrl.Options{
 		Cache:          cache.Options{DefaultNamespaces: map[string]cache.Config{namespace: {}}, ReaderFailOnMissingInformer: true},
-		Client:         client.Options{Cache: &client.CacheOptions{DisableFor: []client.Object{&corev1.Secret{}, &corev1.PersistentVolumeClaim{}}}},
+		Client:         client.Options{Cache: &client.CacheOptions{DisableFor: []client.Object{&corev1.Secret{}, &corev1.PersistentVolumeClaim{}, &corev1.ServiceAccount{}}}},
 		LeaderElection: true, LeaderElectionNamespace: namespace, LeaderElectionID: "hermes-agent-controller",
 		Metrics: metricsserver.Options{BindAddress: "0"}, HealthProbeBindAddress: ":8081",
 	}
