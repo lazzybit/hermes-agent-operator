@@ -95,8 +95,11 @@ func apply(ctx context.Context, c client.Client, s *runtime.Scheme, owner client
 		old.Spec.Template.Spec.SecurityContext = desired.Spec.Template.Spec.SecurityContext
 		old.Spec.Template.Spec.Volumes = desired.Spec.Template.Spec.Volumes
 		old.Spec.Template.Spec.AutomountServiceAccountToken = desired.Spec.Template.Spec.AutomountServiceAccountToken
+		old.Spec.Template.Spec.ServiceAccountName = desired.Spec.Template.Spec.ServiceAccountName
 	case *networkingv1.NetworkPolicy:
 		old.Spec = want.(*networkingv1.NetworkPolicy).Spec
+	case *corev1.ServiceAccount:
+		old.AutomountServiceAccountToken = want.(*corev1.ServiceAccount).AutomountServiceAccountToken
 	case *corev1.ConfigMap:
 		old.Data = want.(*corev1.ConfigMap).Data
 	case *corev1.Service:
@@ -209,6 +212,9 @@ func (r *HermesReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 	if err = projectGatewayResources(ctx, r, h, profiles, channels, d); err != nil {
 		return
 	}
+	if err = ensureWorkloadIdentity(ctx, r.Client, r.Scheme, h, d); err != nil {
+		return
+	}
 	err = apply(ctx, r.Client, r.Scheme, h, d)
 	if err == nil {
 		err = cleanupOwned(ctx, r.Client, h, &networkingv1.NetworkPolicy{ObjectMeta: metav1.ObjectMeta{Name: h.Name + "-gateway"}}, &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: h.Name + "-gateway-managed-config"}})
@@ -293,6 +299,9 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, req ctrl.Request) (re
 			return
 		}
 		result.RequeueAfter = delay
+	}
+	if err = ensureWorkloadIdentity(ctx, r.Client, r.Scheme, p, d); err != nil {
+		return
 	}
 	if err = apply(ctx, r.Client, r.Scheme, p, d); err != nil {
 		return
