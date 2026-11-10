@@ -1,0 +1,20 @@
+diff --git a/gateway/media_fetch.py b/gateway/media_fetch.py
+index 5a8a2f7..7ad641a 100644
+--- a/gateway/media_fetch.py
++++ b/gateway/media_fetch.py
+@@ -72,7 +72,14 @@ def _active_remote_env():
+     backend = _tenv("TERMINAL_ENV", "local").strip().lower()
+     if backend not in _REMOTE_TERMINAL_BACKENDS and not _plugin_backend_is_remote(backend):
+         return None
+-    return get_active_env(get_session_env("HERMES_SESSION_ID") or get_session_env("HERMES_SESSION_KEY") or "default")
++    task_id = get_session_env("HERMES_SESSION_ID") or get_session_env("HERMES_SESSION_KEY")
++    env = get_active_env(task_id or "default")
++    if env is None and backend == "ssh" and task_id:
++        # Delivery can follow agent cleanup or idle cache eviction. Reconnect only
++        # the explicitly scoped SSH profile/session; never guess a default route.
++        from tools.terminal_tool_lifecycle import ensure_task_env
++        env = ensure_task_env(task_id)
++    return env
+ 
+ 
+ def fetch_remote_media(path: str) -> Optional[str]:

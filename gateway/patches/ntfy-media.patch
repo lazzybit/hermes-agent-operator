@@ -1,0 +1,91 @@
+diff --git a/plugins/platforms/ntfy/adapter.py b/plugins/platforms/ntfy/adapter.py
+index 07c6ad2..988060c 100644
+--- a/plugins/platforms/ntfy/adapter.py
++++ b/plugins/platforms/ntfy/adapter.py
+@@ -298,6 +298,76 @@ class NtfyAdapter(BasePlatformAdapter):
+             logger.error("[%s] Send error: %s", self.name, e)
+             return SendResult(success=False, error=str(e))
+ 
++    async def _send_attachment(self, chat_id: str, file_path: str,
++                               caption: Optional[str] = None, file_name: Optional[str] = None,
++                               metadata: Optional[dict[str, Any]] = None) -> SendResult:
++        """Upload bytes using ntfy's native attachment API, including small text files."""
++        from email.header import Header
++        from pathlib import Path
++        import mimetypes
++        if not self._http_client:
++            return SendResult(success=False, error="HTTP client not initialized")
++        topic = (metadata or {}).get("publish_topic") or self._publish_topic or chat_id
++        path = Path(file_path)
++        # RFC 2047 is supported by ntfy and keeps HTTP headers ASCII-safe.
++        def header(value: str) -> str:
++            return Header(value, "utf-8", maxlinelen=100000).encode() if not value.isascii() else value
++        try:
++            name = Path(file_name or path.name).name
++            if any(c in name + (caption or "") for c in "\r\n\x00"):
++                return SendResult(success=False, error="Invalid attachment header")
++            headers = _publish_headers(self._token, False)
++            headers["Content-Type"] = mimetypes.guess_type(name)[0] or "application/octet-stream"
++            headers["X-Filename"] = header(name)
++            if caption:
++                headers["X-Message"] = header(caption[:self.MAX_MESSAGE_LENGTH])
++            # Bound the read to the existing remote-media cap; ntfy enforces its own lower limits.
++            with path.open("rb") as source:
++                body = source.read(50 * 1024 * 1024 + 1)
++            if len(body) > 50 * 1024 * 1024:
++                return SendResult(success=False, error="Attachment exceeds 50 MiB")
++            response = await self._http_client.put(
++                f"{self._server}/{topic}", content=body, headers=headers, timeout=60.0)
++            if response.status_code >= 300:
++                return SendResult(success=False, error=f"ntfy attachment HTTP {response.status_code}")
++            event = response.json()
++            if not (event.get("attachment") or {}).get("url"):
++                return SendResult(success=False, error="ntfy response did not contain an attachment")
++            return SendResult(success=True, message_id=_response_message_id(response))
++        except (OSError, ValueError):
++            return SendResult(success=False, error="Cannot read or publish attachment")
++        except httpx.TimeoutException:
++            return SendResult(success=False, error="Timeout uploading ntfy attachment")
++        except Exception:
++            logger.warning("[%s] Attachment upload failed", self.name)
++            return SendResult(success=False, error="ntfy attachment upload failed")
++
++    async def send_image(self, chat_id: str, image_url: str, caption: Optional[str] = None,
++                         reply_to: Optional[str] = None,
++                         metadata: Optional[dict[str, Any]] = None) -> SendResult:
++        if image_url.startswith(("https://", "http://")):
++            # Native remote attachments are downloaded by clients, not the gateway.
++            if not self._http_client:
++                return SendResult(success=False, error="HTTP client not initialized")
++            headers = _publish_headers(self._token, False)
++            headers["X-Attach"] = image_url
++            topic = (metadata or {}).get("publish_topic") or self._publish_topic or chat_id
++            try:
++                response = await self._http_client.post(
++                    f"{self._server}/{topic}", content=(caption or "").encode("utf-8"),
++                    headers=headers, timeout=15.0)
++                if response.status_code < 300 and (response.json().get("attachment") or {}).get("url"):
++                    return SendResult(success=True, message_id=_response_message_id(response))
++                return SendResult(success=False, error=f"ntfy image attachment HTTP {response.status_code}")
++            except Exception:
++                return SendResult(success=False, error="ntfy image attachment failed")
++        return await self._send_attachment(chat_id, image_url, caption, metadata=metadata)
++
++    async def send_document(self, chat_id: str, file_path: str, caption: Optional[str] = None,
++                            file_name: Optional[str] = None, reply_to: Optional[str] = None,
++                            metadata: Optional[dict[str, Any]] = None, **kwargs) -> SendResult:
++        return await self._send_attachment(chat_id, file_path, caption, file_name, metadata)
++
+     async def get_chat_info(self, chat_id: str) -> dict[str, Any]:
+         return {"name": chat_id, "type": "dm"}
+ 
+@@ -377,5 +447,8 @@ def register(ctx) -> None:
+             "Use plain text by default — ntfy supports optional markdown "
+             "(set markdown: true in config or NTFY_MARKDOWN=true). "
+             "Keep responses concise; ntfy is a push notification service "
+-            "with a 4096-character per-message limit."
++            "with a 4096-character per-message limit. "
++            "You can send files natively: write MEDIA:/absolute/path/to/file in your response. "
++            "Images appear as native ntfy image attachments; other files appear as downloadable attachments. "
++            "Use MEDIA: for generated files rather than Markdown links to local filesystem paths."
+         ))

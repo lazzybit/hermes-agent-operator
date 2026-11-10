@@ -72,6 +72,17 @@ class SSHMediaSessionTest(unittest.TestCase):
             self.assertEqual(result, [])
             lookup.assert_not_called()
 
+    def test_missing_ssh_cache_reopens_only_scoped_environment(self):
+        clear_session_vars([])
+        remote = Remote(b"reconnected SSH")
+        with patch("tools.terminal_tool_lifecycle.get_active_env", return_value=None), \
+             patch("tools.terminal_tool_lifecycle.ensure_task_env", return_value=remote) as reopen:
+            result = base.BasePlatformAdapter.filter_media_delivery_paths(
+                [("/remote-only/reconnected.txt", False)], session_key="route-reconnect")
+            self.assertEqual(len(result), 1)
+            self.assertEqual(Path(result[0][0]).read_bytes(), b"reconnected SSH")
+            reopen.assert_called_once_with("route-reconnect")
+
 
 if __name__ == "__main__":
     unittest.main()

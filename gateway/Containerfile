@@ -21,6 +21,11 @@ RUN cd /opt/hermes \
  && git apply --check /tmp/ssh-media-session.patch \
  && git apply /tmp/ssh-media-session.patch \
  && rm /tmp/ssh-media-session.patch
+COPY patches/ntfy-media.patch patches/ssh-media-reconnect.patch /tmp/
+RUN cd /opt/hermes \
+ && git apply --check /tmp/ntfy-media.patch /tmp/ssh-media-reconnect.patch \
+ && git apply /tmp/ntfy-media.patch /tmp/ssh-media-reconnect.patch \
+ && rm /tmp/ntfy-media.patch /tmp/ssh-media-reconnect.patch
 COPY --from=builder /hermes-gateway-init /usr/local/bin/hermes-gateway-init
 COPY hermes-plugin-path /usr/local/bin/hermes-plugin-path
 RUN chmod 0755 /usr/local/bin/hermes-gateway-init /usr/local/bin/hermes-plugin-path \
