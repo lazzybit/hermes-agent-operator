@@ -78,6 +78,16 @@ func syncMessaging(ctx context.Context, c client.Client, namespace string, profi
 		if profile.Spec.Messaging == nil {
 			continue
 		}
+		if profile.Spec.Messaging.ClaimName != "" {
+			channel, claimErr := consumeChannelClaim(ctx, c, profile)
+			if claimErr != nil {
+				return nil, claimErr
+			}
+			if channel != nil {
+				bound = append(bound, *channel)
+			}
+			continue
+		}
 		if name, ok := claimed[profile.UID]; ok {
 			channel := findChannel(channels, name)
 			bound = append(bound, *channel)

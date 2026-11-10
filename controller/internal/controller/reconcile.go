@@ -330,7 +330,7 @@ func (r *HermesReconciler) profileRequests(ctx context.Context, obj client.Objec
 	return out
 }
 func (r *HermesReconciler) SetupWithManager(m ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(m).For(&api.Hermes{}).Owns(&networkingv1.NetworkPolicy{}).Owns(&appsv1.Deployment{}).Owns(&corev1.ConfigMap{}).Watches(&api.HermesProfile{}, handler.EnqueueRequestsFromMapFunc(r.profileRequests)).Watches(&api.MessagingChannel{}, handler.EnqueueRequestsFromMapFunc(r.profileRequests)).WatchesMetadata(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(r.configSecretRequests)).Complete(r)
+	return ctrl.NewControllerManagedBy(m).For(&api.Hermes{}).Owns(&networkingv1.NetworkPolicy{}).Owns(&appsv1.Deployment{}).Owns(&corev1.ConfigMap{}).Watches(&api.HermesProfile{}, handler.EnqueueRequestsFromMapFunc(r.profileRequests)).Watches(&api.MessagingChannel{}, handler.EnqueueRequestsFromMapFunc(r.profileRequests)).Watches(&api.ChannelClaim{}, handler.EnqueueRequestsFromMapFunc(r.profileRequests)).Watches(&api.Channel{}, handler.EnqueueRequestsFromMapFunc(r.profileRequests)).WatchesMetadata(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(r.configSecretRequests)).Complete(r)
 }
 func (r *ProfileReconciler) channelProfileRequests(ctx context.Context, obj client.Object) []reconcile.Request {
 	list := &api.HermesProfileList{}

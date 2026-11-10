@@ -2,3 +2,6 @@ resources:
   - bases/hermes.nousresearch.com_hermes.yaml
   - bases/hermes.nousresearch.com_hermesprofiles.yaml
   - bases/hermes.nousresearch.com_messagingchannels.yaml
+  - bases/hermes.nousresearch.com_channels.yaml
+  - bases/hermes.nousresearch.com_channelclaims.yaml
+  - bases/hermes.nousresearch.com_channelclasses.yaml

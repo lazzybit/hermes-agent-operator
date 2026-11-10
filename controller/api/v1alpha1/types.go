@@ -150,10 +150,13 @@ type HermesProfileSpec struct {
 	Messaging *ProfileMessagingSpec `json:"messaging,omitempty"`
 }
 
-// ProfileMessagingSpec claims one channel. platform is the sum-type discriminant.
+// ProfileMessagingSpec consumes a Claim, or uses the legacy direct binding API.
+// +kubebuilder:validation:XValidation:rule="has(self.claimName) ? (!has(self.platform) && !has(self.channelRef)) : has(self.platform)",message="claimName is exclusive with legacy platform/channelRef"
 type ProfileMessagingSpec struct {
+	// ClaimName references a ChannelClaim. Mutually exclusive with legacy fields.
+	ClaimName string `json:"claimName,omitempty"`
 	// +kubebuilder:validation:Enum=telegram;ntfy
-	Platform string `json:"platform"`
+	Platform string `json:"platform,omitempty"`
 	// ChannelRef names one MessagingChannel. Omission claims any Available channel of this platform.
 	// +kubebuilder:validation:MaxLength=40
 	// +kubebuilder:validation:Pattern=`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`

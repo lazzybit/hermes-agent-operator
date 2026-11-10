@@ -8,3 +8,4 @@ if [ -z "${IMAGE:-}" ]; then
 fi
 
 docker run --rm "$IMAGE" --help
+docker run --rm --entrypoint /opt/telegram/bin/python -v "$(pwd)/controller/test_telegram_provision.py:/test_telegram_provision.py:ro" "$IMAGE" /test_telegram_provision.py

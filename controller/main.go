@@ -51,6 +51,9 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	if err = (&controller.ChannelClaimReconciler{Client: manager.GetClient()}).SetupWithManager(manager); err != nil {
+		panic(err)
+	}
 	if err = (&controller.HermesReconciler{Client: manager.GetClient(), Scheme: scheme}).SetupWithManager(manager); err != nil {
 		panic(err)
 	}

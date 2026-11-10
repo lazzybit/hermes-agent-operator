@@ -231,14 +231,20 @@ spec:
                     maxLength: 40
                     pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
                     type: string
+                  claimName:
+                    description: ClaimName references a ChannelClaim. Mutually exclusive
+                      with legacy fields.
+                    type: string
                   platform:
                     enum:
                     - telegram
                     - ntfy
                     type: string
-                required:
-                - platform
                 type: object
+                x-kubernetes-validations:
+                - message: claimName is exclusive with legacy platform/channelRef
+                  rule: 'has(self.claimName) ? (!has(self.platform) && !has(self.channelRef))
+                    : has(self.platform)'
               plugins:
                 description: |-
                   Plugins is an optional plugins.json document. Omission or an empty list
