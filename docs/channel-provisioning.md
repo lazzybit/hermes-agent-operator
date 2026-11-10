@@ -1,13 +1,18 @@
 # Channel provisioning
 
 Profile consumes `spec.messaging.claimName`. ChannelClaim requests only generic
-properties (`displayName`, class name, optional static channel name). A nonempty
+properties (`name`, `displayName`, class name, optional static channel name). A nonempty
 class selects the Telegram provisioner; an explicit empty class disables dynamic
 provisioning. Claims report only Pending or Available. Available means reciprocal
 UID binding and a nonempty credential Secret; it does not prove message delivery.
 
 ChannelClass parameters hold the manager token Secret reference, user session
-Secret reference, and username prefix/suffix. Session Secret keys: `api_id`,
+Secret reference, and required `usernameTemplate`. Only `{RANDOMIZED}` and `{NAME}`
+are supported; for example `ha{RANDOMIZED}_{NAME}`. `NAME` comes from Claim
+`spec.name` (kebab case); Telegram converts hyphens to underscores. `RANDOMIZED`
+is an eight-character hexadecimal digest of the unique Claim UID, stable across
+retries. No suffix is appended and overlong results are rejected without truncation.
+Existing persisted identities are retained. Session Secret keys: `api_id`,
 `api_hash`, `session` (Telethon StringSession). Manager token alone cannot invoke
 user-only `bots.createBot`. The controller does not prompt for login or fall back
 to user confirmation. Missing user authorization reports UserSessionRequired.

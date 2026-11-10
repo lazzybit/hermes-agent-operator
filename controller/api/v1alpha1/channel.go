@@ -49,6 +49,9 @@ type ChannelClaim struct {
 	Status            ChannelClaimStatus `json:"status,omitempty"`
 }
 type ChannelClaimSpec struct {
+	// Name is the logical channel name, independent of the Kubernetes resource name.
+	// +kubebuilder:validation:Pattern="^[a-z0-9]+(-[a-z0-9]+)*$"
+	Name string `json:"name,omitempty"`
 	// Explicit empty disables dynamic provisioning. No default class is selected.
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="channelClassName is immutable"
 	ChannelClassName *string `json:"channelClassName,omitempty"`
@@ -90,10 +93,8 @@ type TelegramProvisionerParameters struct {
 	ManagerTokenSecretRef corev1.SecretKeySelector `json:"managerTokenSecretRef"`
 	// Session Secret contains api_id, api_hash and session (Telethon StringSession).
 	UserSessionSecretRef corev1.LocalObjectReference `json:"userSessionSecretRef"`
-	// +kubebuilder:default="ha_"
-	UsernamePrefix string `json:"usernamePrefix,omitempty"`
-	// +kubebuilder:default="_bot"
-	UsernameSuffix string `json:"usernameSuffix,omitempty"`
+	// UsernameTemplate supports only {RANDOMIZED} and {NAME}.
+	UsernameTemplate string `json:"usernameTemplate"`
 }
 
 // +kubebuilder:object:root=true

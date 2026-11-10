@@ -48,6 +48,11 @@ spec:
                 type: string
               displayName:
                 type: string
+              name:
+                description: Name is the logical channel name, independent of the
+                  Kubernetes resource name.
+                pattern: ^[a-z0-9]+(-[a-z0-9]+)*$
+                type: string
             type: object
           status:
             properties:

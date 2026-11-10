@@ -56,23 +56,18 @@ func telegramCall(ctx context.Context, token, method string, payload any, out an
 	return json.Unmarshal(envelope.Result, out)
 }
 func generatedTelegramUsername(claim *api.ChannelClaim, class *api.ChannelClass) (string, error) {
-	prefix, suffix := class.Spec.Parameters.UsernamePrefix, class.Spec.Parameters.UsernameSuffix
-	if prefix == "" {
-		prefix = "ha_"
+	template := class.Spec.Parameters.UsernameTemplate
+	if template == "" || claim.Spec.Name == "" || claim.UID == "" {
+		return "", fmt.Errorf("usernameTemplate, claim spec.name and UID are required")
 	}
-	if suffix == "" {
-		suffix = "_bot"
+	if !regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`).MatchString(claim.Spec.Name) {
+		return "", fmt.Errorf("claim spec.name must be kebab case")
 	}
 	hash := sha256.Sum256([]byte(claim.UID))
-	stem := regexp.MustCompile(`[^a-zA-Z0-9_]`).ReplaceAllString(claim.Name, "_")
-	budget := 32 - len(prefix) - len(suffix) - 9
-	if budget < 1 {
-		return "", fmt.Errorf("username generation parameters exceed Telegram limit")
+	name := strings.NewReplacer("{NAME}", strings.ReplaceAll(claim.Spec.Name, "-", "_"), "{RANDOMIZED}", hex.EncodeToString(hash[:4])).Replace(template)
+	if strings.ContainsAny(name, "{}") {
+		return "", fmt.Errorf("usernameTemplate supports only {RANDOMIZED} and {NAME}")
 	}
-	if len(stem) > budget {
-		stem = stem[:budget]
-	}
-	name := prefix + stem + "_" + hex.EncodeToString(hash[:4]) + suffix
 	if !regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]{4,31}$`).MatchString(name) {
 		return "", fmt.Errorf("invalid generated Telegram username")
 	}

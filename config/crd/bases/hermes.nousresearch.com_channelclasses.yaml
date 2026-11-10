@@ -78,15 +78,13 @@ spec:
                         type: string
                     type: object
                     x-kubernetes-map-type: atomic
-                  usernamePrefix:
-                    default: ha_
-                    type: string
-                  usernameSuffix:
-                    default: _bot
+                  usernameTemplate:
+                    description: UsernameTemplate supports only {RANDOMIZED} and {NAME}.
                     type: string
                 required:
                 - managerTokenSecretRef
                 - userSessionSecretRef
+                - usernameTemplate
                 type: object
               provisioner:
                 enum:
