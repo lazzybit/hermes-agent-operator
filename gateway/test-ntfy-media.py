@@ -26,7 +26,7 @@ class NtfyMediaTest(unittest.IsolatedAsyncioTestCase):
         self.adapter._http_client = self.client
 
     async def test_image_is_native_binary_attachment(self):
-        result = await self.adapter.send_image('inbox', str(self.file), caption='純黑圖片')
+        result = await self.adapter.send_image_file('inbox', str(self.file), caption='純黑圖片')
         self.assertTrue(result.success, result.error)
         req = self.requests[-1]
         self.assertEqual(req.method, 'PUT')
