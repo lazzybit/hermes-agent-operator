@@ -171,7 +171,7 @@ func (r *HermesReconciler) configSecretRequests(ctx context.Context, obj client.
 		}
 	}
 	for _, channel := range channels.Items {
-		if channel.Spec.Telegram != nil && matches(&channel.Spec.Telegram.TokenSecretRef) {
+		if ref := channelTokenRef(channel); ref != nil && matches(ref) {
 			for _, h := range instances.Items {
 				refs[h.Name] = true
 			}

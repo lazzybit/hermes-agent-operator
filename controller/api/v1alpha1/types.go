@@ -152,7 +152,7 @@ type HermesProfileSpec struct {
 
 // ProfileMessagingSpec claims one channel. platform is the sum-type discriminant.
 type ProfileMessagingSpec struct {
-	// +kubebuilder:validation:Enum=telegram
+	// +kubebuilder:validation:Enum=telegram;ntfy
 	Platform string `json:"platform"`
 	// ChannelRef names one MessagingChannel. Omission claims any Available channel of this platform.
 	// +kubebuilder:validation:MaxLength=40
@@ -179,14 +179,25 @@ type TelegramChannelSpec struct {
 
 // MessagingChannelSpec is one platform. platform telegram requires spec.telegram
 // and forbids any other platform block.
-// +kubebuilder:validation:XValidation:rule="self.platform == 'telegram' && has(self.telegram)",message="platform telegram requires spec.telegram"
+// +kubebuilder:validation:XValidation:rule="(self.platform == 'telegram' && has(self.telegram)) || (self.platform == 'ntfy' && has(self.ntfy))",message="platform telegram requires spec.telegram"
 // +kubebuilder:validation:XValidation:rule="!has(self.telegram) || self.platform == 'telegram'",message="spec.telegram is only valid for platform telegram"
+// +kubebuilder:validation:XValidation:rule="!has(self.ntfy) || self.platform == 'ntfy'",message="spec.ntfy is only valid for platform ntfy"
 type MessagingChannelSpec struct {
 	// Platform is immutable.
-	// +kubebuilder:validation:Enum=telegram
+	// +kubebuilder:validation:Enum=telegram;ntfy
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="platform is immutable"
 	Platform string               `json:"platform"`
 	Telegram *TelegramChannelSpec `json:"telegram,omitempty"`
+	Ntfy     *NtfyChannelSpec     `json:"ntfy,omitempty"`
+}
+
+type NtfyChannelSpec struct {
+	// +kubebuilder:validation:Pattern=`^https?://[^/]+.*$`
+	ServerURL string `json:"serverURL"`
+	// +kubebuilder:validation:Pattern=`^ha[A-Za-z0-9]{12}_[a-z0-9]+(-[a-z0-9]+)*$`
+	// +kubebuilder:validation:MaxLength=128
+	Topic          string                    `json:"topic"`
+	TokenSecretRef *corev1.SecretKeySelector `json:"tokenSecretRef,omitempty"`
 }
 
 // MessagingClaimRef identifies the single profile bound to a channel.

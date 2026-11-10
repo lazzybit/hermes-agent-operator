@@ -234,6 +234,7 @@ spec:
                   platform:
                     enum:
                     - telegram
+                    - ntfy
                     type: string
                 required:
                 - platform

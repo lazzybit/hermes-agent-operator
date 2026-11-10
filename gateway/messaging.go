@@ -20,6 +20,7 @@ type messagingChannel struct {
 	Name      string             `json:"name"`
 	TokenPath string             `json:"tokenPath"`
 	Telegram  *messagingTelegram `json:"telegram"`
+	Ntfy      *messagingNtfy     `json:"ntfy"`
 }
 
 type messagingTelegram struct {
@@ -52,6 +53,9 @@ func applyMessaging(home string, opt options) error {
 	channel, ok := doc[opt.profile]
 	if !ok {
 		return nil
+	}
+	if channel.Platform == "ntfy" {
+		return applyNtfyMessaging(home, opt, channel)
 	}
 	if channel.Platform != "telegram" || channel.Telegram == nil {
 		return fmt.Errorf("messaging channel %s is not a telegram channel", channel.Name)

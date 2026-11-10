@@ -224,10 +224,11 @@ func ensureMessagingFinalizer(ctx context.Context, c client.Client, profile *api
 }
 
 type resourceChannel struct {
-	Platform  string            `json:"platform"`
-	Name      string            `json:"name"`
-	TokenPath string            `json:"tokenPath"`
-	Telegram  *resourceTelegram `json:"telegram,omitempty"`
+	Platform  string               `json:"platform"`
+	Name      string               `json:"name"`
+	TokenPath string               `json:"tokenPath"`
+	Telegram  *resourceTelegram    `json:"telegram,omitempty"`
+	Ntfy      *api.NtfyChannelSpec `json:"ntfy,omitempty"`
 }
 
 type resourceTelegram struct {
@@ -300,7 +301,20 @@ func resourcesChannels(channels []api.MessagingChannel, profiles []api.HermesPro
 			continue
 		}
 		profile, ok := byUID[channel.Status.ClaimRef.UID]
-		if !ok || channel.Spec.Telegram == nil {
+		if !ok {
+			continue
+		}
+		if channel.Spec.Ntfy != nil {
+			n := *channel.Spec.Ntfy
+			n.TokenSecretRef = nil
+			entry := resourceChannel{Platform: channel.Spec.Platform, Name: channel.Name, Ntfy: &n}
+			if channel.Spec.Ntfy.TokenSecretRef != nil {
+				entry.TokenPath = "/run/hermes/resources/channels/" + channel.Name + "/token"
+			}
+			doc[profile] = entry
+			continue
+		}
+		if channel.Spec.Telegram == nil {
 			continue
 		}
 		doc[profile] = resourceChannel{
@@ -356,10 +370,11 @@ func messagingRollout(ctx context.Context, r *HermesReconciler, h *api.Hermes, c
 	ordered := append([]api.MessagingChannel(nil), channels...)
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i].Name < ordered[j].Name })
 	for _, channel := range ordered {
-		if channel.Spec.Telegram == nil {
+		refPtr := channelTokenRef(channel)
+		if refPtr == nil {
 			continue
 		}
-		ref := channel.Spec.Telegram.TokenSecretRef
+		ref := *refPtr
 		secret := &corev1.Secret{}
 		if err := r.Get(ctx, client.ObjectKey{Namespace: h.Namespace, Name: ref.Name}, secret); err != nil {
 			return "", err
@@ -387,10 +402,11 @@ func projectChannels(d *appsv1.Deployment, channels []api.MessagingChannel) {
 	ordered := append([]api.MessagingChannel(nil), channels...)
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i].Name < ordered[j].Name })
 	for _, channel := range ordered {
-		if channel.Spec.Telegram == nil {
+		refPtr := channelTokenRef(channel)
+		if refPtr == nil {
 			continue
 		}
-		ref := channel.Spec.Telegram.TokenSecretRef
+		ref := *refPtr
 		volume := "channel-" + channel.Name
 		pod.Volumes = append(pod.Volumes, corev1.Volume{Name: volume, VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{
 			SecretName: ref.Name, DefaultMode: &mode, Optional: ref.Optional,

@@ -40,10 +40,48 @@ spec:
               MessagingChannelSpec is one platform. platform telegram requires spec.telegram
               and forbids any other platform block.
             properties:
+              ntfy:
+                properties:
+                  serverURL:
+                    pattern: ^https?://[^/]+.*$
+                    type: string
+                  tokenSecretRef:
+                    description: SecretKeySelector selects a key of a Secret.
+                    properties:
+                      key:
+                        description: The key of the secret to select from.  Must be
+                          a valid secret key.
+                        type: string
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                      optional:
+                        description: Specify whether the Secret or its key must be
+                          defined
+                        type: boolean
+                    required:
+                    - key
+                    type: object
+                    x-kubernetes-map-type: atomic
+                  topic:
+                    maxLength: 128
+                    pattern: ^ha[A-Za-z0-9]{12}_[a-z0-9]+(-[a-z0-9]+)*$
+                    type: string
+                required:
+                - serverURL
+                - topic
+                type: object
               platform:
                 description: Platform is immutable.
                 enum:
                 - telegram
+                - ntfy
                 type: string
                 x-kubernetes-validations:
                 - message: platform is immutable
@@ -102,9 +140,12 @@ spec:
             type: object
             x-kubernetes-validations:
             - message: platform telegram requires spec.telegram
-              rule: self.platform == 'telegram' && has(self.telegram)
+              rule: (self.platform == 'telegram' && has(self.telegram)) || (self.platform
+                == 'ntfy' && has(self.ntfy))
             - message: spec.telegram is only valid for platform telegram
               rule: '!has(self.telegram) || self.platform == ''telegram'''
+            - message: spec.ntfy is only valid for platform ntfy
+              rule: '!has(self.ntfy) || self.platform == ''ntfy'''
           status:
             description: MessagingChannelStatus is Available until a profile claims
               the channel.
