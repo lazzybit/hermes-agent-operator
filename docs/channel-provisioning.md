@@ -8,10 +8,12 @@ UID binding and a nonempty credential Secret; it does not prove message delivery
 
 ChannelClass parameters hold the manager token Secret reference, user session
 Secret reference, and required `usernameTemplate`. Only `{RANDOMIZED}` and `{NAME}`
-are supported; for example `ha{RANDOMIZED}_{NAME}`. `NAME` comes from Claim
+are supported; for example `ha{RANDOMIZED}_{NAME}_bot`. `NAME` comes from Claim
 `spec.name` (kebab case); Telegram converts hyphens to underscores. `RANDOMIZED`
-is an eight-character hexadecimal digest of the unique Claim UID, stable across
-retries. No suffix is appended and overlong results are rejected without truncation.
+is 16 cryptographically random characters from `A-Z`, `a-z` and `0-9`, sampled
+uniformly and independently of the Claim UID. Persist the generated username
+before external calls and reuse it on retries. No suffix is appended and overlong
+results are rejected without truncation.
 Existing persisted identities are retained. Session Secret keys: `api_id`,
 `api_hash`, `session` (Telethon StringSession). Manager token alone cannot invoke
 user-only `bots.createBot`. The controller does not prompt for login or fall back

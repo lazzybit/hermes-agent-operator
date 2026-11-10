@@ -3,8 +3,7 @@ package controller
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	api "github.com/lazzybit/hermes-agent-operator/api/v1alpha1"
@@ -13,6 +12,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"math/big"
 	"net/http"
 	"os/exec"
 	"regexp"
@@ -56,6 +56,9 @@ func telegramCall(ctx context.Context, token, method string, payload any, out an
 	return json.Unmarshal(envelope.Result, out)
 }
 func generatedTelegramUsername(claim *api.ChannelClaim, class *api.ChannelClass) (string, error) {
+	if claim.Status.GeneratedUsername != "" {
+		return claim.Status.GeneratedUsername, nil
+	}
 	template := class.Spec.Parameters.UsernameTemplate
 	if template == "" || claim.Spec.Name == "" || claim.UID == "" {
 		return "", fmt.Errorf("usernameTemplate, claim spec.name and UID are required")
@@ -63,8 +66,16 @@ func generatedTelegramUsername(claim *api.ChannelClaim, class *api.ChannelClass)
 	if !regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`).MatchString(claim.Spec.Name) {
 		return "", fmt.Errorf("claim spec.name must be kebab case")
 	}
-	hash := sha256.Sum256([]byte(claim.UID))
-	name := strings.NewReplacer("{NAME}", strings.ReplaceAll(claim.Spec.Name, "-", "_"), "{RANDOMIZED}", hex.EncodeToString(hash[:4])).Replace(template)
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+	randomized := make([]byte, 16)
+	for i := range randomized {
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(alphabet))))
+		if err != nil {
+			return "", fmt.Errorf("username randomness unavailable")
+		}
+		randomized[i] = alphabet[n.Int64()]
+	}
+	name := strings.NewReplacer("{NAME}", strings.ReplaceAll(claim.Spec.Name, "-", "_"), "{RANDOMIZED}", string(randomized)).Replace(template)
 	if strings.ContainsAny(name, "{}") {
 		return "", fmt.Errorf("usernameTemplate supports only {RANDOMIZED} and {NAME}")
 	}
